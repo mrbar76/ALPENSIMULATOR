@@ -158,8 +158,9 @@ def fix_quad_positioning_logic(catalog_df):
                 thickness = float(size.replace('mm', ''))
                 break
         
-        if thickness and thickness > 2.0:  # Thick glass (>2mm)
-            # In Quad IGU: positions 2&3 are center, only thin glass allowed
+        # Apply quad inner restrictions for thick glass (>1.1mm)
+        if thickness and thickness > 1.1:  # Glass thicker than 1.1mm
+            # In Quad IGU: positions 2&3 are inner positions, only thin glass (≤1.1mm) allowed
             # Thick glass should only be Can_Outer=True and Can_Inner=True (positions 1&4)
             catalog_df.loc[idx, 'Can_QuadInner'] = False  # Position 2&3 in quad
             catalog_df.loc[idx, 'Flip_QuadInner'] = False
@@ -170,8 +171,8 @@ def fix_quad_positioning_logic(catalog_df):
                 current_notes = ''
             current_notes = str(current_notes)
             
-            if 'thick for quad center' not in current_notes.lower():
-                new_notes = f"{current_notes} - Too thick for quad center positions".strip(' -')
+            if 'thick for quad inner' not in current_notes.lower():
+                new_notes = f"{current_notes} - Too thick for quad inner positions (>1.1mm)".strip(' -')
                 catalog_df.loc[idx, 'Notes'] = new_notes
     
     return catalog_df
@@ -325,15 +326,15 @@ def create_interactive_catalog_editor():
     for idx, row in edited_df.iterrows():
         glass_name = str(row['Short_Name']).lower()
         
-        # Check for thick glass in quad center positions
+        # Check for thick glass in quad inner positions
         thickness = None
-        for size in ['6mm', '5mm', '4mm', '3mm']:
+        for size in ['6mm', '5mm', '4mm', '3mm', '2mm', '1.1mm', '1mm']:
             if size in glass_name:
                 thickness = float(size.replace('mm', ''))
                 break
         
-        if thickness and thickness > 2.0 and row['Can_QuadInner']:
-            warnings.append(f"⚠️ {row['Short_Name']}: Thick glass ({thickness}mm) cannot be in Quad center positions")
+        if thickness and thickness > 1.1 and row['Can_QuadInner']:
+            warnings.append(f"⚠️ {row['Short_Name']}: Glass thicker than 1.1mm ({thickness}mm) cannot be in Quad inner positions")
     
     # Add spacer constraint information
     st.subheader("📏 Spacer Constraints")
@@ -637,6 +638,45 @@ elif current_step == 3:
         st.subheader("🔥 Full Generate")
         st.warning("Complete configuration set")
         
+        # Calculate total possible configurations
+        catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
+        
+        # Count available glasses by position
+        outer_glasses = len(catalog_df[catalog_df['Can_Outer'] == True])
+        center_glasses = len(catalog_df[catalog_df['Can_Center'] == True])  
+        inner_glasses = len(catalog_df[catalog_df['Can_Inner'] == True])
+        quad_inner_glasses = len(catalog_df[catalog_df['Can_QuadInner'] == True])
+        
+        # IGU types, OA sizes, gas types, spacer thicknesses
+        igu_types = 2  # Triple, Quad
+        oa_sizes = 3   # 0.88, 1.0, 1.25
+        gas_types = 2  # 90K, 95A
+        valid_spacers = len(get_valid_spacer_range())  # 6-20mm (15 options)
+        
+        # Calculate theoretical maximums
+        triple_configs = outer_glasses * center_glasses * inner_glasses * igu_types * oa_sizes * gas_types * valid_spacers
+        quad_configs = outer_glasses * quad_inner_glasses * center_glasses * inner_glasses * igu_types * oa_sizes * gas_types * valid_spacers
+        
+        total_theoretical = triple_configs + quad_configs
+        
+        # Display configuration statistics
+        st.info(f"""
+        **📊 Configuration Statistics:**
+        - **Theoretical Maximum:** {total_theoretical:,} possible combinations
+        - **Glass Options:** {len(catalog_df)} total glasses
+        - **Spacer Options:** {valid_spacers} valid thicknesses (6-20mm)
+        """)
+        
+        # Configuration limit input
+        config_limit = st.number_input(
+            "Configuration Limit", 
+            min_value=1000, 
+            max_value=min(100000, total_theoretical), 
+            value=min(10000, total_theoretical), 
+            step=1000,
+            help=f"Generate up to {min(100000, total_theoretical):,} configurations ({(min(10000, total_theoretical)/total_theoretical*100):.1f}% of theoretical maximum)"
+        )
+        
         if st.button("🔥 Run Full Generator"):
             with st.spinner("Running full generator..."):
                 progress_bar = st.progress(0)
@@ -645,7 +685,7 @@ elif current_step == 3:
                     progress_bar.progress(i + 1)
                 
                 # Create larger mock dataset with proper array lengths
-                total_configs = 10000
+                total_configs = config_limit
                 
                 import numpy as np
                 np.random.seed(42)  # For reproducible results
