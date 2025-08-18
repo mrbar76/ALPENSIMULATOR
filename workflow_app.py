@@ -1,7 +1,7 @@
 """
-Alpen IGU Workflow - Step-by-Step Process
+Alpen IGU Workflow - Step-by-Step Process with Smart Flip Management
 
-Step 1: Ingredient Management (Add/Remove ingredients)
+Step 1: Smart Ingredient Management (Interactive flip editing + auto-flip logic)
 Step 2: Rule Configuration (Configure rules for each ingredient)  
 Step 3: Generate Configurations (Run the configuration generator)
 Step 4: Run Simulation (PyWinCalc simulation)
@@ -13,6 +13,10 @@ import pandas as pd
 import json
 from pathlib import Path
 import sys
+import time
+import os
+import glob
+from datetime import datetime
 
 # Add current directory to path for imports
 sys.path.append('.')
@@ -23,7 +27,17 @@ try:
 except ImportError:
     RULES_AVAILABLE = False
 
-st.set_page_config(page_title="Alpen IGU Workflow", layout="wide")
+st.set_page_config(page_title="ALPENSIMULATOR - Smart Flip Management", layout="wide")
+
+# Try to import PyWinCalc with graceful fallback
+try:
+    import pywincalc
+    PYWINCALC_AVAILABLE = True
+    st.success("✅ PyWinCalc loaded successfully - Real thermal simulation available!")
+except ImportError as e:
+    PYWINCALC_AVAILABLE = False
+    st.warning(f"⚠️ PyWinCalc not available: {e}")
+    st.info("📊 Using mock simulation data - Install PyWinCalc locally for real thermal calculations")
 
 # Helper functions
 @st.cache_data
@@ -144,6 +158,210 @@ def show_detailed_results(results_df, title):
         mime='text/csv'
     )
 
+# Smart flip logic functions
+def get_coating_type(glass_name, notes=""):
+    """Determine coating type from glass name and notes"""
+    name_lower = glass_name.lower()
+    notes_lower = notes.lower() if notes else ""
+    
+    if any(keyword in name_lower for keyword in ['loe', 'low-e', 'low e']):
+        if any(keyword in name_lower for keyword in ['272', '277', '366', '180']):
+            return 'low_e_hard' if any(keyword in name_lower for keyword in ['272', '277']) else 'low_e_soft'
+        else:
+            return 'low_e_soft'  # Default to soft coat
+    elif any(keyword in name_lower for keyword in ['i89', 'guardian']):
+        return 'high_performance'
+    elif 'clear' in name_lower:
+        return 'clear'
+    else:
+        return 'unknown'
+
+def get_smart_flip_recommendation(glass_name, position, coating_type=None, notes=""):
+    """Get intelligent flip recommendation based on glass properties and position"""
+    if not coating_type:
+        coating_type = get_coating_type(glass_name, notes)
+    
+    recommendations = {
+        'clear': {
+            'outer': False,      # No coating, flip doesn't matter
+            'quad_inner': False,
+            'center': False,
+            'inner': False
+        },
+        'low_e_hard': {  # Hard coat Low-E (like LoE 272, 277)
+            'outer': True,       # Coating faces interior (surface 2)
+            'quad_inner': False, # Coating faces exterior (surface 6 or 7)
+            'center': False,     # Coating faces air gap
+            'inner': False       # Coating faces interior (surface 3 or 5)
+        },
+        'low_e_soft': {  # Soft coat Low-E (like LoE 366, 180)
+            'outer': True,       # Coating faces interior (surface 2) - protected position
+            'quad_inner': False, # Coating faces exterior in protected position
+            'center': True,      # Coating in protected air gap position
+            'inner': False       # Coating faces interior (protected)
+        },
+        'high_performance': {  # i89, Guardian, etc.
+            'outer': True,       # Usually face interior for best performance
+            'quad_inner': False,
+            'center': True,
+            'inner': False
+        }
+    }
+    
+    return recommendations.get(coating_type, recommendations['clear'])
+
+def create_interactive_catalog_editor():
+    """Create interactive glass catalog editor with flip management"""
+    st.subheader("🔧 Interactive Glass Catalog with Smart Flip Management")
+    
+    # Load catalog
+    try:
+        catalog_df = pd.read_csv("unified_glass_catalog.csv")
+    except FileNotFoundError:
+        st.error("❌ unified_glass_catalog.csv not found")
+        return
+    
+    # Add smart flip recommendations
+    st.info("💡 **Smart Flip Logic**: Automatically recommends optimal orientations based on coating properties")
+    
+    # Filter options
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        manufacturer_filter = st.selectbox(
+            "Filter by Manufacturer",
+            ["All"] + list(catalog_df['Manufacturer'].unique())
+        )
+    with col2:
+        coating_filter = st.selectbox(
+            "Filter by Coating Type",
+            ["All", "Clear Glass", "Low-E Hard Coat", "Low-E Soft Coat", "High Performance"]
+        )
+    with col3:
+        position_filter = st.selectbox(
+            "Show Available for Position",
+            ["All", "Outer", "Quad-Inner", "Center", "Inner"]
+        )
+    
+    # Apply filters
+    filtered_df = catalog_df.copy()
+    
+    if manufacturer_filter != "All":
+        filtered_df = filtered_df[filtered_df['Manufacturer'] == manufacturer_filter]
+    
+    if coating_filter != "All":
+        coating_map = {
+            "Clear Glass": "clear",
+            "Low-E Hard Coat": "low_e_hard", 
+            "Low-E Soft Coat": "low_e_soft",
+            "High Performance": "high_performance"
+        }
+        target_coating = coating_map[coating_filter]
+        filtered_df = filtered_df[
+            filtered_df.apply(lambda row: get_coating_type(row['Short_Name'], row.get('Notes', '')) == target_coating, axis=1)
+        ]
+    
+    if position_filter != "All":
+        position_col = f"Can_{position_filter.replace('-', '')}"
+        if position_col in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[position_col] == True]
+    
+    # Batch operations
+    st.subheader("⚡ Batch Operations")
+    batch_col1, batch_col2, batch_col3 = st.columns(3)
+    
+    with batch_col1:
+        if st.button("🤖 Apply Smart Flip Logic", help="Auto-set flips based on coating properties"):
+            for idx, row in filtered_df.iterrows():
+                coating_type = get_coating_type(row['Short_Name'], row.get('Notes', ''))
+                
+                for position in ['outer', 'quad_inner', 'center', 'inner']:
+                    pos_col = position.replace('_', '').replace('quad', 'Quad').replace('outer', 'Outer').replace('inner', 'Inner').replace('center', 'Center')
+                    if row[f'Can_{pos_col}']:
+                        smart_flip = get_smart_flip_recommendation(
+                            row['Short_Name'], position, coating_type, row.get('Notes', '')
+                        )[position]
+                        catalog_df.loc[catalog_df['NFRC_ID'] == row['NFRC_ID'], f'Flip_{pos_col}'] = smart_flip
+            
+            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+            st.success("✅ Smart flip logic applied to all filtered glasses!")
+            st.rerun()
+    
+    with batch_col2:
+        if st.button("❌ Clear All Flips", help="Set all flips to False"):
+            for position in ['Outer', 'QuadInner', 'Center', 'Inner']:
+                catalog_df.loc[catalog_df['NFRC_ID'].isin(filtered_df['NFRC_ID']), f'Flip_{position}'] = False
+            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+            st.success("✅ All flips cleared for filtered glasses!")
+            st.rerun()
+    
+    with batch_col3:
+        if st.button("💾 Save Catalog", help="Save current catalog state"):
+            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+            st.success("✅ Catalog saved!")
+    
+    # Interactive editor for individual glasses  
+    st.subheader(f"✏️ Individual Glass Settings ({len(filtered_df)} glasses)")
+    
+    for idx, row in filtered_df.iterrows():
+        with st.expander(f"🔧 {row['Short_Name']} (NFRC {row['NFRC_ID']})"):
+            coating_type = get_coating_type(row['Short_Name'], row.get('Notes', ''))
+            
+            # Show glass info
+            info_col1, info_col2 = st.columns(2)
+            with info_col1:
+                st.metric("Manufacturer", row['Manufacturer'])
+                st.metric("Coating Type", coating_type.replace('_', ' ').title())
+            with info_col2:
+                if row.get('Notes'):
+                    st.text_area("Notes", row['Notes'], height=60, disabled=True, key=f"notes_{row['NFRC_ID']}")
+            
+            # Position settings with flip checkboxes
+            st.write("**Position Settings with Smart Recommendations:**")
+            flip_cols = st.columns(4)
+            
+            positions = [
+                ('Outer', 'outer'),
+                ('QuadInner', 'quad_inner'), 
+                ('Center', 'center'),
+                ('Inner', 'inner')
+            ]
+            
+            for i, (pos_col, pos_key) in enumerate(positions):
+                with flip_cols[i]:
+                    can_use = row[f'Can_{pos_col}']
+                    current_flip = row[f'Flip_{pos_col}']
+                    
+                    if can_use:
+                        # Get smart recommendation
+                        smart_recommendation = get_smart_flip_recommendation(
+                            row['Short_Name'], pos_key, coating_type, row.get('Notes', '')
+                        )[pos_key]
+                        
+                        # Show recommendation indicator
+                        if smart_recommendation:
+                            st.markdown(f"**{pos_col.replace('Inner', '-Inner')}** 🤖")
+                            st.markdown("✅ **Recommended**")
+                        else:
+                            st.markdown(f"**{pos_col.replace('Inner', '-Inner')}**")
+                            st.markdown("⭕ Not Recommended")
+                        
+                        # Flip checkbox
+                        new_flip = st.checkbox(
+                            f"Flip Glass",
+                            value=current_flip,
+                            key=f"flip_{row['NFRC_ID']}_{pos_col}",
+                            help=f"Smart recommendation: {'FLIP' if smart_recommendation else 'NO FLIP'}"
+                        )
+                        
+                        # Update if changed
+                        if new_flip != current_flip:
+                            catalog_df.loc[catalog_df['NFRC_ID'] == row['NFRC_ID'], f'Flip_{pos_col}'] = new_flip
+                            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+                            st.success(f"✅ {pos_col} flip updated!")
+                    else:
+                        st.markdown(f"**{pos_col.replace('Inner', '-Inner')}**")
+                        st.markdown("❌ Not Available")
+
 # Initialize session state for workflow tracking
 if 'workflow_step' not in st.session_state:
     st.session_state.workflow_step = 1
@@ -160,13 +378,19 @@ if 'configurations_generated' not in st.session_state:
 if 'simulation_completed' not in st.session_state:
     st.session_state.simulation_completed = False
 
+# Mode indicator
+if PYWINCALC_AVAILABLE:
+    st.success("🔥 **FULL VERSION**: Real PyWinCalc + Smart Flip Management")
+else:
+    st.info("📊 **ENHANCED DEMO**: Smart Flip Management + Mock Simulation")
+
 # Header
-st.title("🔧 Alpen IGU Workflow - Step-by-Step Process")
-st.subheader("Materials Science Approach: Ingredients → Rules → Configuration → Simulation → Optimization")
+st.title("🔧 ALPENSIMULATOR - Smart Flip Management")
+st.subheader("Materials Science Approach: Smart Ingredients → Rules → Configuration → Simulation → Optimization")
 
 # Progress indicator
 progress_steps = [
-    "1️⃣ Ingredient Management",
+    "1️⃣ Smart Ingredient Management",
     "2️⃣ Rule Configuration", 
     "3️⃣ Generate Configurations",
     "4️⃣ Run Simulation",
@@ -190,57 +414,45 @@ for i, step in enumerate(progress_steps, 1):
 
 st.divider()
 
-# === STEP 1: INGREDIENT MANAGEMENT ===
+# === STEP 1: SMART INGREDIENT MANAGEMENT ===
 if current_step == 1:
-    st.header("1️⃣ Ingredient Management")
-    st.subheader("Add/Remove Glass Types, Gas Fills, and Airspace Sizes")
+    st.header("1️⃣ Smart Ingredient Management")
+    st.subheader("Interactive Glass Catalog with Intelligent Flip Logic")
     
-    # Ingredient Overview Diagram
-    st.subheader("🧩 Ingredient Types Overview")
-    st.info("💡 Understanding what each ingredient type contributes to IGU performance")
+    # Create the interactive catalog editor
+    create_interactive_catalog_editor()
+    
+    st.divider()
+    
+    # Show other input files
+    st.subheader("📁 Additional Input Files")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.code("""
-        🪟 GLASS CATALOG INGREDIENTS:
-        
-        📍 Inner/Outer Glass (Edge Glass):
-        • Thickness: ≥3mm 
-        • Positions: Surfaces 1,2 and 5,6 (Triple)
-        • Examples: Clear 6mm, i89 6mm, LoE-180 6mm
-        • Requirements: Same manufacturer match
-        
-        📍 Center Glass:
-        • Thickness: ≤1.1mm (thin)
-        • Position: Surfaces 3,4 (Triple center)
-        • Examples: Clear 1.1mm, NxLite 1.1mm
-        • Purpose: Lightweight, minimal thermal bridge
-        """)
+        try:
+            gas_df = pd.read_csv("input_gas_types.csv")
+            st.subheader("⛽ Gas Types")
+            st.dataframe(gas_df, use_container_width=True)
+        except FileNotFoundError:
+            st.error("❌ Gas types file not found")
     
     with col2:
-        st.code("""
-        💨 GAS FILLS & 🌀 AIRSPACE SIZES:
-        
-        💨 Gas Fill Types:
-        • Air: Standard, 1.0x cost
-        • 95A: 95% Argon, 1.1x cost, better insulation
-        • 90K: 90% Krypton, 1.35x cost, best performance
-        
-        🌀 Outer Airspace (OA) Sizes:
-        • Total nominal thickness (inches/mm)
-        • System calculates individual gaps:
-          - Triple: (OA - glass thicknesses) ÷ 2
-          - Quad: (OA - glass thicknesses) ÷ 3
-        • Min individual gap: 3mm for structural integrity
-        """)
+        try:
+            oa_df = pd.read_csv("input_oa_sizes.csv")
+            st.subheader("📏 OA Sizes")
+            st.dataframe(oa_df, use_container_width=True)
+        except FileNotFoundError:
+            st.error("❌ OA sizes file not found")
     
-    st.divider()
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["🪟 Glass Catalog", "💨 Gas Types", "🌀 Airspace Sizes", "📊 Summary"])
-    
-    with tab1:
-        st.subheader("Glass Catalog Management")
+    if st.button("Proceed to Step 2: Configure Rules", type="primary"):
+        st.session_state.workflow_step = 2
+        st.rerun()
+
+# === STEP 2: RULE CONFIGURATION ===
+elif current_step == 2:
+    st.header("2️⃣ Rule Configuration")
+    st.subheader("Configure Rules for Each Ingredient Type")
         
         # Load current glass catalogs
         try:
