@@ -112,53 +112,77 @@ if current_step == 1:
 # === STEP 2: GENERATION RULES ===
 elif current_step == 2:
     st.header("2️⃣ Generation Rules & Configuration") 
-    st.subheader("Configure IGU generation rules and constraints")
+    st.subheader("Built-in manufacturing and physics rules")
     
-    # Load rule builder
-    try:
-        from rule_builder import RuleBuilder
-        
-        st.info("**Rule Builder Integration** - Create custom rules for IGU generation")
-        
-        # Initialize rule builder
-        builder = RuleBuilder()
-        
-        # Create rule interface
-        tab1, tab2 = st.tabs(["🔧 Build Rules", "📋 View Current Rules"])
-        
-        with tab1:
-            st.subheader("Rule Builder")
-            builder.create_rule_builder_interface()
-            
-        with tab2:
-            st.subheader("Current Generation Rules")
-            
-            # Load and display current rules
-            rules_file = "igu_generation_rules.yaml"
-            if os.path.exists(rules_file):
-                import yaml
-                with open(rules_file, 'r') as f:
-                    rules = yaml.safe_load(f)
-                st.code(yaml.dump(rules, default_flow_style=False), language='yaml')
-            else:
-                st.info("No rules file found. Rules will use defaults.")
-        
-        # Navigation
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("⬅️ Back to Step 1"):
-                st.session_state.workflow_step = 1
-                st.rerun()
-        with col2:
-            if st.button("➡️ Proceed to Step 3", type="primary"):
-                st.session_state.workflow_step = 3
-                st.rerun()
-                
-    except ImportError:
-        st.error("❌ Rule builder not available")
-        st.info("Using default generation rules")
-        
-        if st.button("➡️ Proceed to Step 3 (Skip Rules)", type="primary"):
+    st.success("✅ **Using proven rules from the original generator**")
+    
+    # Display the built-in rules from the original generator
+    st.info("""
+    **🔧 Manufacturing Constraints:**
+    • Edge glass minimum thickness: 3.0mm
+    • Center glass maximum thickness: 1.1mm (for tight fit)
+    • Thickness tolerance between outer/inner: ±0.3mm
+    • Minimum air gap: 3.0mm
+    
+    **🏭 Manufacturer Compatibility:**
+    • Outer and inner glass must be from same manufacturer OR one can be "Generic"
+    • Ensures structural and warranty compatibility
+    
+    **⚗️ Physics & Performance:**
+    • Air gap calculated from OA and actual glass thicknesses
+    • Coating placement validated (inner ≤ outer emissivity)
+    • Position constraints enforced (quad-inner thickness limits)
+    • Low-E coating ordering rules applied
+    
+    **📏 Standard Specifications:**
+    • OA sizes: 0.88", 1.0", 1.25"
+    • Gas types: 90K, 95A argon fills
+    • Spacer thickness: 6-20mm range
+    • Surface coatings: Proper placement validation
+    """)
+    
+    # Show configuration constants
+    st.subheader("📊 Current Configuration Constants")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Max Configs per Type", "2,000", help="Limits generation for performance")
+        st.metric("Min Edge Thickness", "3.0mm", help="Manufacturing constraint")
+    with col2:
+        st.metric("Max Center Thickness", "1.1mm", help="Tight fit requirement") 
+        st.metric("Thickness Tolerance", "±0.3mm", help="Outer/inner matching")
+    with col3:
+        st.metric("Min Air Gap", "3.0mm", help="Performance minimum")
+        st.metric("Quad OA Minimum", "0.75\"", help="Structural requirement")
+    
+    # Configuration file status
+    st.subheader("🗂️ Configuration Files")
+    
+    required_files = [
+        ("unified_glass_catalog.csv", "Glass catalog with position capabilities"),
+        ("input_oa_sizes.csv", "Standard OA sizes"),
+        ("input_gas_types.csv", "Available gas fill types")
+    ]
+    
+    all_present = True
+    for filename, description in required_files:
+        if os.path.exists(filename):
+            st.success(f"✅ {filename} - {description}")
+        else:
+            st.error(f"❌ {filename} - {description}")
+            all_present = False
+    
+    if not all_present:
+        st.warning("⚠️ Some configuration files are missing. Generation may use defaults.")
+    
+    # Navigation
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Back to Step 1"):
+            st.session_state.workflow_step = 1
+            st.rerun()
+    with col2:
+        if st.button("➡️ Proceed to Step 3", type="primary"):
             st.session_state.workflow_step = 3
             st.rerun()
 
