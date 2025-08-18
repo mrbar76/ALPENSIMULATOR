@@ -74,7 +74,7 @@ def create_igu_description(row, glass_catalog):
 # Smart flip logic
 def get_coating_type(glass_name, notes=""):
     """Determine coating type from glass name"""
-    name_lower = glass_name.lower()
+    name_lower = str(glass_name).lower()
     
     if any(keyword in name_lower for keyword in ['loe', 'low-e', 'low e']):
         if any(keyword in name_lower for keyword in ['272', '277']):
@@ -105,7 +105,7 @@ def get_smart_flip_recommendation(glass_name, position, coating_type=None, notes
 def fix_quad_positioning_logic(catalog_df):
     """Fix positioning logic - thick glass can't be in quad center positions"""
     for idx, row in catalog_df.iterrows():
-        glass_name = row['Short_Name'].lower()
+        glass_name = str(row['Short_Name']).lower()
         
         # Extract thickness from glass name
         thickness = None
@@ -120,8 +120,12 @@ def fix_quad_positioning_logic(catalog_df):
             catalog_df.loc[idx, 'Can_QuadInner'] = False  # Position 2&3 in quad
             catalog_df.loc[idx, 'Flip_QuadInner'] = False
             
-            # Update notes to reflect this
+            # Update notes to reflect this - handle NaN values properly
             current_notes = row.get('Notes', '')
+            if pd.isna(current_notes) or current_notes is None:
+                current_notes = ''
+            current_notes = str(current_notes)
+            
             if 'thick for quad center' not in current_notes.lower():
                 new_notes = f"{current_notes} - Too thick for quad center positions".strip(' -')
                 catalog_df.loc[idx, 'Notes'] = new_notes
@@ -275,7 +279,7 @@ def create_interactive_catalog_editor():
     warnings = []
     
     for idx, row in edited_df.iterrows():
-        glass_name = row['Short_Name'].lower()
+        glass_name = str(row['Short_Name']).lower()
         
         # Check for thick glass in quad center positions
         thickness = None
