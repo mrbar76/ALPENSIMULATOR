@@ -524,20 +524,43 @@ elif current_step == 3:
                     time.sleep(0.01)
                     progress_bar.progress(i + 1)
                 
-                # Create mock config data
+                # Create mock config data with proper array lengths
+                total_configs = 2000
+                
+                import numpy as np
+                np.random.seed(42)  # For reproducible results
+                
+                # Generate data with proper lengths
+                igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
+                oa_sizes = np.random.choice([0.88, 1.0], total_configs)
+                gas_types = np.random.choice(['90K', '95A'], total_configs)
+                glass_1_ids = np.random.choice([102, 103], total_configs)
+                glass_2_ids = np.random.choice([107, 102, 103], total_configs)
+                glass_3_ids = np.random.choice([102, 103], total_configs)
+                
+                # Glass 4 only for Quad IGUs
+                glass_4_ids = []
+                for igu_type in igu_types:
+                    if igu_type == 'Quad':
+                        glass_4_ids.append(np.random.choice([102, 103]))
+                    else:
+                        glass_4_ids.append('')
+                
+                air_gaps = np.random.choice([7.51, 4.84], total_configs)
+                
                 mock_configs = pd.DataFrame({
-                    'IGU Type': ['Triple'] * 1000 + ['Quad'] * 1000,
-                    'OA (in)': [0.88, 1.0] * 1000,
-                    'Gas Type': ['90K', '95A'] * 1000,
-                    'Glass 1 NFRC ID': [102, 103] * 1000,
-                    'Glass 2 NFRC ID': [107] * 1000 + [102, 103] * 500,
-                    'Glass 3 NFRC ID': [102, 103] * 1000,
-                    'Glass 4 NFRC ID': [''] * 1000 + [102, 103] * 500,
-                    'Air Gap (mm)': [7.51, 4.84] * 1000
+                    'IGU Type': igu_types,
+                    'OA (in)': oa_sizes,
+                    'Gas Type': gas_types,
+                    'Glass 1 NFRC ID': glass_1_ids,
+                    'Glass 2 NFRC ID': glass_2_ids,
+                    'Glass 3 NFRC ID': glass_3_ids,
+                    'Glass 4 NFRC ID': glass_4_ids,
+                    'Air Gap (mm)': air_gaps
                 })
                 
                 mock_configs.to_csv(config_file, index=False)
-                st.success("✅ Generated 2,000 configurations")
+                st.success(f"✅ Generated {len(mock_configs):,} configurations")
     
     with col2:
         st.subheader("🔥 Full Generate")
@@ -550,20 +573,43 @@ elif current_step == 3:
                     time.sleep(0.02)
                     progress_bar.progress(i + 1)
                 
-                # Create larger mock dataset
+                # Create larger mock dataset with proper array lengths
+                total_configs = 10000
+                
+                import numpy as np
+                np.random.seed(42)  # For reproducible results
+                
+                # Generate data with proper lengths
+                igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
+                oa_sizes = np.random.choice([0.88, 1.0, 1.25], total_configs)
+                gas_types = np.random.choice(['90K', '95A'], total_configs)
+                glass_1_ids = np.random.choice([102, 103, 119, 120], total_configs)
+                glass_2_ids = np.random.choice([107, 22501, 22720], total_configs)
+                glass_3_ids = np.random.choice([102, 103, 119, 120], total_configs)
+                
+                # Glass 4 only for Quad IGUs
+                glass_4_ids = []
+                for igu_type in igu_types:
+                    if igu_type == 'Quad':
+                        glass_4_ids.append(np.random.choice([102, 103]))
+                    else:
+                        glass_4_ids.append('')
+                
+                air_gaps = np.random.choice([7.51, 4.84, 5.2], total_configs)
+                
                 mock_configs = pd.DataFrame({
-                    'IGU Type': ['Triple'] * 5000 + ['Quad'] * 5000,
-                    'OA (in)': [0.88, 1.0, 1.25] * 3334,
-                    'Gas Type': ['90K', '95A'] * 5000,
-                    'Glass 1 NFRC ID': [102, 103, 119, 120] * 2500,
-                    'Glass 2 NFRC ID': [107, 22501, 22720] * 3334,
-                    'Glass 3 NFRC ID': [102, 103, 119, 120] * 2500,
-                    'Glass 4 NFRC ID': [''] * 5000 + [102, 103] * 2500,
-                    'Air Gap (mm)': [7.51, 4.84, 5.2] * 3334
+                    'IGU Type': igu_types,
+                    'OA (in)': oa_sizes,
+                    'Gas Type': gas_types,
+                    'Glass 1 NFRC ID': glass_1_ids,
+                    'Glass 2 NFRC ID': glass_2_ids,
+                    'Glass 3 NFRC ID': glass_3_ids,
+                    'Glass 4 NFRC ID': glass_4_ids,
+                    'Air Gap (mm)': air_gaps
                 })
                 
                 mock_configs.to_csv(config_file, index=False)
-                st.success("✅ Generated 10,000 configurations")
+                st.success(f"✅ Generated {len(mock_configs):,} configurations")
     
     # Show existing configurations
     try:
