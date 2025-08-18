@@ -102,8 +102,34 @@ def get_smart_flip_recommendation(glass_name, position, coating_type=None, notes
     
     return recommendations.get(coating_type, recommendations['clear'])
 
+def fix_quad_positioning_logic(catalog_df):
+    """Fix positioning logic - thick glass can't be in quad center positions"""
+    for idx, row in catalog_df.iterrows():
+        glass_name = row['Short_Name'].lower()
+        
+        # Extract thickness from glass name
+        thickness = None
+        for size in ['6mm', '5mm', '4mm', '3mm', '2mm', '1.1mm', '1mm']:
+            if size in glass_name:
+                thickness = float(size.replace('mm', ''))
+                break
+        
+        if thickness and thickness > 2.0:  # Thick glass (>2mm)
+            # In Quad IGU: positions 2&3 are center, only thin glass allowed
+            # Thick glass should only be Can_Outer=True and Can_Inner=True (positions 1&4)
+            catalog_df.loc[idx, 'Can_QuadInner'] = False  # Position 2&3 in quad
+            catalog_df.loc[idx, 'Flip_QuadInner'] = False
+            
+            # Update notes to reflect this
+            current_notes = row.get('Notes', '')
+            if 'thick for quad center' not in current_notes.lower():
+                new_notes = f"{current_notes} - Too thick for quad center positions".strip(' -')
+                catalog_df.loc[idx, 'Notes'] = new_notes
+    
+    return catalog_df
+
 def create_interactive_catalog_editor():
-    """Interactive glass catalog editor with flip management"""
+    """Table-based interactive glass catalog editor with flip management"""
     st.subheader("🔧 Interactive Glass Catalog with Smart Flip Management")
     
     try:
@@ -112,11 +138,16 @@ def create_interactive_catalog_editor():
         st.error("❌ unified_glass_catalog.csv not found")
         return
     
-    st.info("💡 **Smart Flip Logic**: Automatically recommends optimal orientations based on coating properties")
+    # Fix quad positioning logic
+    catalog_df = fix_quad_positioning_logic(catalog_df)
+    catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+    
+    st.info("💡 **Smart Flip Logic**: Recommends optimal orientations based on coating properties")
+    st.info("🔧 **Quad Logic**: Thick glass (>2mm) only in outer positions (1&4), thin glass in center positions (2&3)")
     
     # Batch operations
     st.subheader("⚡ Batch Operations")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if st.button("🤖 Apply Smart Flip Logic", help="Auto-set flips based on coating properties"):
@@ -144,51 +175,123 @@ def create_interactive_catalog_editor():
             st.rerun()
     
     with col3:
+        if st.button("🔧 Fix Quad Logic"):
+            catalog_df = fix_quad_positioning_logic(catalog_df)
+            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+            st.success("✅ Quad positioning logic fixed!")
+            st.rerun()
+    
+    with col4:
         if st.button("💾 Save Catalog"):
             catalog_df.to_csv("unified_glass_catalog.csv", index=False)
             st.success("✅ Catalog saved!")
     
-    # Show catalog with flip editing
-    st.subheader(f"📊 Glass Catalog ({len(catalog_df)} glasses)")
+    # Add new glass section
+    with st.expander("➕ Add New Glass"):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            new_nfrc = st.number_input("NFRC ID", min_value=1, value=9999, key="new_nfrc")
+            new_name = st.text_input("Glass Name", value="New Glass 6mm", key="new_name")
+            new_manufacturer = st.text_input("Manufacturer", value="Generic", key="new_manufacturer")
+        
+        with col2:
+            st.write("**Position Capabilities:**")
+            can_outer = st.checkbox("Can be Outer", value=True, key="can_outer")
+            can_quad_inner = st.checkbox("Can be Quad-Inner", value=False, key="can_quad_inner")
+            can_center = st.checkbox("Can be Center", value=False, key="can_center")
+            can_inner = st.checkbox("Can be Inner", value=True, key="can_inner")
+        
+        with col3:
+            st.write("**Default Flip Settings:**")
+            flip_outer = st.checkbox("Flip Outer", value=False, key="flip_outer")
+            flip_quad_inner = st.checkbox("Flip Quad-Inner", value=False, key="flip_quad_inner")
+            flip_center = st.checkbox("Flip Center", value=False, key="flip_center")
+            flip_inner = st.checkbox("Flip Inner", value=False, key="flip_inner")
+        
+        notes = st.text_area("Notes", value="", key="notes")
+        
+        if st.button("➕ Add Glass", type="primary"):
+            if new_nfrc not in catalog_df['NFRC_ID'].values:
+                new_row = {
+                    'NFRC_ID': new_nfrc,
+                    'Short_Name': new_name,
+                    'Manufacturer': new_manufacturer,
+                    'Can_Outer': can_outer,
+                    'Can_QuadInner': can_quad_inner,
+                    'Can_Center': can_center,
+                    'Can_Inner': can_inner,
+                    'Flip_Outer': flip_outer,
+                    'Flip_QuadInner': flip_quad_inner,
+                    'Flip_Center': flip_center,
+                    'Flip_Inner': flip_inner,
+                    'Notes': notes
+                }
+                catalog_df = pd.concat([catalog_df, pd.DataFrame([new_row])], ignore_index=True)
+                catalog_df.to_csv("unified_glass_catalog.csv", index=False)
+                st.success(f"✅ Added {new_name} to catalog!")
+                st.rerun()
+            else:
+                st.error(f"❌ NFRC ID {new_nfrc} already exists!")
     
-    # Show sample of catalog for editing
-    for idx, row in catalog_df.head(10).iterrows():
-        with st.expander(f"🔧 {row['Short_Name']} (NFRC {row['NFRC_ID']})"):
-            coating_type = get_coating_type(row['Short_Name'], row.get('Notes', ''))
-            st.write(f"**Coating Type:** {coating_type.replace('_', ' ').title()}")
-            
-            # Position flip settings
-            flip_cols = st.columns(4)
-            positions = [('Outer', 'outer'), ('QuadInner', 'quad_inner'), ('Center', 'center'), ('Inner', 'inner')]
-            
-            for i, (pos_col, pos_key) in enumerate(positions):
-                with flip_cols[i]:
-                    can_use = row[f'Can_{pos_col}']
-                    current_flip = row[f'Flip_{pos_col}']
-                    
-                    if can_use:
-                        smart_recommendation = get_smart_flip_recommendation(
-                            row['Short_Name'], pos_key, coating_type, row.get('Notes', '')
-                        )[pos_key]
-                        
-                        if smart_recommendation:
-                            st.markdown(f"**{pos_col.replace('Inner', '-Inner')}** ✅")
-                        else:
-                            st.markdown(f"**{pos_col.replace('Inner', '-Inner')}** ⭕")
-                        
-                        new_flip = st.checkbox(
-                            f"Flip Glass",
-                            value=current_flip,
-                            key=f"flip_{row['NFRC_ID']}_{pos_col}",
-                            help=f"Smart rec: {'FLIP' if smart_recommendation else 'NO FLIP'}"
-                        )
-                        
-                        if new_flip != current_flip:
-                            catalog_df.loc[catalog_df['NFRC_ID'] == row['NFRC_ID'], f'Flip_{pos_col}'] = new_flip
-                            catalog_df.to_csv("unified_glass_catalog.csv", index=False)
-                            st.success(f"✅ {pos_col} flip updated!")
-                    else:
-                        st.markdown(f"**{pos_col.replace('Inner', '-Inner')}** ❌")
+    # Table-based editor
+    st.subheader(f"📊 Glass Catalog Table ({len(catalog_df)} glasses)")
+    
+    # Create editable table
+    edited_df = st.data_editor(
+        catalog_df,
+        use_container_width=True,
+        num_rows="dynamic",  # Allow adding/deleting rows
+        column_config={
+            "NFRC_ID": st.column_config.NumberColumn("NFRC ID", help="Unique glass identifier"),
+            "Short_Name": st.column_config.TextColumn("Glass Name", help="Descriptive name including thickness"),
+            "Manufacturer": st.column_config.TextColumn("Manufacturer"),
+            "Can_Outer": st.column_config.CheckboxColumn("Can Outer", help="Position 1 in Triple/Quad"),
+            "Can_QuadInner": st.column_config.CheckboxColumn("Can Quad-Inner", help="Positions 2&3 in Quad only"),
+            "Can_Center": st.column_config.CheckboxColumn("Can Center", help="Position 2 in Triple only"),
+            "Can_Inner": st.column_config.CheckboxColumn("Can Inner", help="Position 3 in Triple, Position 4 in Quad"),
+            "Flip_Outer": st.column_config.CheckboxColumn("🔄 Flip Outer"),
+            "Flip_QuadInner": st.column_config.CheckboxColumn("🔄 Flip Quad-Inner"),
+            "Flip_Center": st.column_config.CheckboxColumn("🔄 Flip Center"),
+            "Flip_Inner": st.column_config.CheckboxColumn("🔄 Flip Inner"),
+            "Notes": st.column_config.TextColumn("Notes", help="Additional information")
+        },
+        hide_index=True,
+        key="catalog_editor"
+    )
+    
+    # Save changes button
+    col1, col2, col3 = st.columns(3)
+    with col2:
+        if st.button("💾 Save All Changes", type="primary", use_container_width=True):
+            # Apply quad logic fix to edited data
+            edited_df = fix_quad_positioning_logic(edited_df)
+            edited_df.to_csv("unified_glass_catalog.csv", index=False)
+            st.success("✅ All changes saved to catalog!")
+            st.rerun()
+    
+    # Show validation warnings
+    st.subheader("⚠️ Validation Warnings")
+    warnings = []
+    
+    for idx, row in edited_df.iterrows():
+        glass_name = row['Short_Name'].lower()
+        
+        # Check for thick glass in quad center positions
+        thickness = None
+        for size in ['6mm', '5mm', '4mm', '3mm']:
+            if size in glass_name:
+                thickness = float(size.replace('mm', ''))
+                break
+        
+        if thickness and thickness > 2.0 and row['Can_QuadInner']:
+            warnings.append(f"⚠️ {row['Short_Name']}: Thick glass ({thickness}mm) cannot be in Quad center positions")
+    
+    if warnings:
+        for warning in warnings:
+            st.warning(warning)
+    else:
+        st.success("✅ No positioning conflicts detected")
 
 def create_mock_results(df, limit=None):
     """Create realistic mock simulation results"""
