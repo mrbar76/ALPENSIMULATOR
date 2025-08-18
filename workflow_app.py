@@ -855,230 +855,232 @@ elif current_step == 2:
         help="Quick Setup covers most common rules, Visual Builder for custom rules, Advanced for power users"
     )
     
-    if mode == "🎯 Quick Setup (Recommended)":
-        tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Validation"])
-    elif mode == "🔧 Visual Rule Builder":
+    if mode == "🔧 Visual Rule Builder":
         st.divider()
-        return create_visual_rule_builder()
-    else:  # Advanced YAML
-        tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Advanced YAML"])
-    
-    with tab1:
-        st.subheader("Manufacturer Compatibility")
+        create_visual_rule_builder()
+    else:
+        # Quick Setup or Advanced YAML modes
+        if mode == "🎯 Quick Setup (Recommended)":
+            tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Validation"])
+        else:  # Advanced YAML
+            tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Advanced YAML"])
         
-        # Same manufacturer requirement
-        same_mfg_enabled = st.checkbox(
-            "Require same manufacturer for outer and inner glass",
-            value=rules.get('manufacturer_rules', {}).get('same_manufacturer_positions', {}).get('enabled', True),
-            help="Structural compatibility requirement"
-        )
-        
-        # Emissivity rules
-        st.subheader("Emissivity Rules")
-        emissivity_enabled = st.checkbox(
-            "Enable emissivity validation (inner ≤ outer)",
-            value=rules.get('coating_rules', {}).get('emissivity_rules', {}).get('enabled', True),
-            help="Example: LoE 366 outer can pair with LoE 272 inner, but not vice versa"
-        )
-        
-        if emissivity_enabled:
-            st.info("**Example Valid Combinations:**\n- Clear outer + any Low-E inner ✅\n- LoE 366 outer + LoE 272 inner ✅\n- LoE 272 outer + LoE 366 inner ❌")
-        
-        # Update rules
-        if 'manufacturer_rules' not in rules:
-            rules['manufacturer_rules'] = {}
-        rules['manufacturer_rules']['same_manufacturer_positions'] = {
-            'enabled': same_mfg_enabled,
-            'positions': ['outer', 'inner']
-        }
-        
-        if 'coating_rules' not in rules:
-            rules['coating_rules'] = {}
-        if 'emissivity_rules' not in rules['coating_rules']:
-            rules['coating_rules']['emissivity_rules'] = {}
-        rules['coating_rules']['emissivity_rules']['enabled'] = emissivity_enabled
-    
-    with tab2:
-        st.subheader("Spacer Thickness Constraints")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            min_spacer = st.number_input(
-                "Minimum (mm)", 
-                min_value=1, max_value=50, step=1,
-                value=rules.get('spacer_rules', {}).get('thickness', {}).get('minimum', 6)
-            )
-        with col2:
-            max_spacer = st.number_input(
-                "Maximum (mm)",
-                min_value=1, max_value=50, step=1, 
-                value=rules.get('spacer_rules', {}).get('thickness', {}).get('maximum', 20)
-            )
-        with col3:
-            increment = st.number_input(
-                "Increment (mm)",
-                min_value=0.1, max_value=5.0, step=0.1,
-                value=rules.get('spacer_rules', {}).get('thickness', {}).get('increment', 1.0)
-            )
-        
-        # Update spacer rules
-        if 'spacer_rules' not in rules:
-            rules['spacer_rules'] = {}
-        if 'thickness' not in rules['spacer_rules']:
-            rules['spacer_rules']['thickness'] = {}
+        with tab1:
+            st.subheader("Manufacturer Compatibility")
             
-        rules['spacer_rules']['thickness']['minimum'] = min_spacer
-        rules['spacer_rules']['thickness']['maximum'] = max_spacer
-        rules['spacer_rules']['thickness']['increment'] = increment
-        
-        # Show valid range
-        valid_range = list(range(int(min_spacer), int(max_spacer) + 1, int(increment)))
-        st.info(f"**Valid spacer thicknesses:** {min(valid_range)}-{max(valid_range)}mm in {increment}mm increments ({len(valid_range)} options)")
-    
-    with tab3:
-        st.subheader("Gas Fill Rules")
-        
-        # Gas-spacer compatibility warnings
-        gas_warnings_enabled = st.checkbox(
-            "Enable gas-spacer compatibility warnings",
-            value=True,
-            help="Warn when gas types are used outside optimal spacer ranges"
-        )
-        
-        # Quad pane gas recommendations  
-        quad_gas_enabled = st.checkbox(
-            "Enable quad pane gas recommendations",
-            value=rules.get('gas_fill_rules', {}).get('performance_rules', {}).get('quad_pane_recommendations', {}).get('enabled', True),
-            help="Recommend optimal gas fills for quad pane IGUs"
-        )
-        
-        if quad_gas_enabled:
-            preferred_quad_gas = st.selectbox(
-                "Preferred gas for quad panes",
-                options=["95A", "90K", "Air"],
-                index=0,
-                help="Gas type that performs best in quad pane configurations"
+            # Same manufacturer requirement
+            same_mfg_enabled = st.checkbox(
+                "Require same manufacturer for outer and inner glass",
+                value=rules.get('manufacturer_rules', {}).get('same_manufacturer_positions', {}).get('enabled', True),
+                help="Structural compatibility requirement"
             )
-        else:
-            preferred_quad_gas = "95A"
-        
-        # Show gas-spacer compatibility matrix
-        st.subheader("Gas-Spacer Compatibility Matrix")
-        gas_spacer_data = {
-            'Gas Type': ['Air', '90K', '95A'],
-            'Optimal Range (mm)': ['6-20 (any)', '8-18 (performance)', '10-16 (high performance)'],
-            'Performance': ['Standard', 'Enhanced', 'Premium']
-        }
-        st.table(pd.DataFrame(gas_spacer_data))
-        
-        # Update gas rules
-        if 'gas_fill_rules' not in rules:
-            rules['gas_fill_rules'] = {}
-        if 'performance_rules' not in rules['gas_fill_rules']:
-            rules['gas_fill_rules']['performance_rules'] = {}
-        if 'quad_pane_recommendations' not in rules['gas_fill_rules']['performance_rules']:
-            rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations'] = {}
             
-        rules['gas_fill_rules']['performance_rules']['enabled'] = gas_warnings_enabled
-        rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['enabled'] = quad_gas_enabled
-        rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['preferred_gas'] = preferred_quad_gas
+            # Emissivity rules
+            st.subheader("Emissivity Rules")
+            emissivity_enabled = st.checkbox(
+                "Enable emissivity validation (inner ≤ outer)",
+                value=rules.get('coating_rules', {}).get('emissivity_rules', {}).get('enabled', True),
+                help="Example: LoE 366 outer can pair with LoE 272 inner, but not vice versa"
+            )
+            
+            if emissivity_enabled:
+                st.info("**Example Valid Combinations:**\n- Clear outer + any Low-E inner ✅\n- LoE 366 outer + LoE 272 inner ✅\n- LoE 272 outer + LoE 366 inner ❌")
+            
+            # Update rules
+            if 'manufacturer_rules' not in rules:
+                rules['manufacturer_rules'] = {}
+            rules['manufacturer_rules']['same_manufacturer_positions'] = {
+                'enabled': same_mfg_enabled,
+                'positions': ['outer', 'inner']
+            }
+            
+            if 'coating_rules' not in rules:
+                rules['coating_rules'] = {}
+            if 'emissivity_rules' not in rules['coating_rules']:
+                rules['coating_rules']['emissivity_rules'] = {}
+            rules['coating_rules']['emissivity_rules']['enabled'] = emissivity_enabled
     
-    with tab4:
-        if mode == "⚙️ Advanced YAML":
-            st.subheader("Advanced YAML Configuration")
-            st.warning("⚠️ Advanced users only. Editing YAML directly can break rule validation.")
+        with tab2:
+            st.subheader("Spacer Thickness Constraints")
             
-            # Show raw YAML for advanced editing
-            rules_yaml = yaml.dump(rules, default_flow_style=False, indent=2)
-            edited_yaml = st.text_area("Rules Configuration (YAML)", rules_yaml, height=400)
-            
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
-                if st.button("💾 Update from YAML"):
-                    try:
-                        rules = yaml.safe_load(edited_yaml)
-                        save_generation_rules(rules)
-                        st.success("Rules updated from YAML")
-                        st.rerun()
-                    except yaml.YAMLError as e:
-                        st.error(f"YAML parsing error: {e}")
-            
+                min_spacer = st.number_input(
+                    "Minimum (mm)", 
+                    min_value=1, max_value=50, step=1,
+                    value=rules.get('spacer_rules', {}).get('thickness', {}).get('minimum', 6)
+                )
             with col2:
-                if st.button("🔄 Reset YAML"):
-                    st.rerun()
-        else:
-            st.subheader("Rule Validation")
-        
-        # Test rules with current catalog
-        if st.button("🧪 Test Rules Against Sample Configuration", type="primary"):
+                max_spacer = st.number_input(
+                    "Maximum (mm)",
+                    min_value=1, max_value=50, step=1, 
+                    value=rules.get('spacer_rules', {}).get('thickness', {}).get('maximum', 20)
+                )
+            with col3:
+                increment = st.number_input(
+                    "Increment (mm)",
+                    min_value=0.1, max_value=5.0, step=0.1,
+                    value=rules.get('spacer_rules', {}).get('thickness', {}).get('increment', 1.0)
+                )
+            
+            # Update spacer rules
+            if 'spacer_rules' not in rules:
+                rules['spacer_rules'] = {}
+            if 'thickness' not in rules['spacer_rules']:
+                rules['spacer_rules']['thickness'] = {}
+                
+            rules['spacer_rules']['thickness']['minimum'] = min_spacer
+            rules['spacer_rules']['thickness']['maximum'] = max_spacer
+            rules['spacer_rules']['thickness']['increment'] = increment
+            
+            # Show valid range
+            valid_range = list(range(int(min_spacer), int(max_spacer) + 1, int(increment)))
+            st.info(f"**Valid spacer thicknesses:** {min(valid_range)}-{max(valid_range)}mm in {increment}mm increments ({len(valid_range)} options)")
+    
+        with tab3:
+            st.subheader("Gas Fill Rules")
+            
+            # Gas-spacer compatibility warnings
+            gas_warnings_enabled = st.checkbox(
+                "Enable gas-spacer compatibility warnings",
+                value=True,
+                help="Warn when gas types are used outside optimal spacer ranges"
+            )
+            
+            # Quad pane gas recommendations  
+            quad_gas_enabled = st.checkbox(
+                "Enable quad pane gas recommendations",
+                value=rules.get('gas_fill_rules', {}).get('performance_rules', {}).get('quad_pane_recommendations', {}).get('enabled', True),
+                help="Recommend optimal gas fills for quad pane IGUs"
+            )
+            
+            if quad_gas_enabled:
+                preferred_quad_gas = st.selectbox(
+                    "Preferred gas for quad panes",
+                    options=["95A", "90K", "Air"],
+                    index=0,
+                    help="Gas type that performs best in quad pane configurations"
+                )
+            else:
+                preferred_quad_gas = "95A"
+            
+            # Show gas-spacer compatibility matrix
+            st.subheader("Gas-Spacer Compatibility Matrix")
+            gas_spacer_data = {
+                'Gas Type': ['Air', '90K', '95A'],
+                'Optimal Range (mm)': ['6-20 (any)', '8-18 (performance)', '10-16 (high performance)'],
+                'Performance': ['Standard', 'Enhanced', 'Premium']
+            }
+            st.table(pd.DataFrame(gas_spacer_data))
+            
+            # Update gas rules
+            if 'gas_fill_rules' not in rules:
+                rules['gas_fill_rules'] = {}
+            if 'performance_rules' not in rules['gas_fill_rules']:
+                rules['gas_fill_rules']['performance_rules'] = {}
+            if 'quad_pane_recommendations' not in rules['gas_fill_rules']['performance_rules']:
+                rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations'] = {}
+                
+            rules['gas_fill_rules']['performance_rules']['enabled'] = gas_warnings_enabled
+            rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['enabled'] = quad_gas_enabled
+            rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['preferred_gas'] = preferred_quad_gas
+    
+        with tab4:
+            if mode == "⚙️ Advanced YAML":
+                st.subheader("Advanced YAML Configuration")
+                st.warning("⚠️ Advanced users only. Editing YAML directly can break rule validation.")
+                
+                # Show raw YAML for advanced editing
+                rules_yaml = yaml.dump(rules, default_flow_style=False, indent=2)
+                edited_yaml = st.text_area("Rules Configuration (YAML)", rules_yaml, height=400)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("💾 Update from YAML"):
+                        try:
+                            rules = yaml.safe_load(edited_yaml)
+                            save_generation_rules(rules)
+                            st.success("Rules updated from YAML")
+                            st.rerun()
+                        except yaml.YAMLError as e:
+                            st.error(f"YAML parsing error: {e}")
+                
+                with col2:
+                    if st.button("🔄 Reset YAML"):
+                        st.rerun()
+            else:
+                st.subheader("Rule Validation")
+            
+            # Test rules with current catalog
+            if st.button("🧪 Test Rules Against Sample Configuration", type="primary"):
+                catalog_df = load_glass_catalog()
+                if not catalog_df.empty:
+                    # Test configuration with potential rule violations
+                    test_configs = [
+                        {
+                            'name': 'Valid Triple Configuration',
+                            'config': {
+                                'IGU Type': 'Triple',
+                                'OA (inches)': 1.0,
+                                'Gas Type': '90K',
+                                'Glass 1 NFRC ID': 102,   # Generic 3mm (outer)
+                                'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
+                                'Glass 3 NFRC ID': 2011,  # LoE 272 (inner)
+                                'Glass 4 NFRC ID': '',
+                                'Air Gap (mm)': 12
+                            }
+                        },
+                        {
+                            'name': 'Emissivity Rule Test (should fail if enabled)',
+                            'config': {
+                                'IGU Type': 'Triple',
+                                'OA (inches)': 1.0,
+                                'Gas Type': '90K',
+                                'Glass 1 NFRC ID': 2011,  # LoE 272 (outer)
+                                'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
+                                'Glass 3 NFRC ID': 2154,  # LoE 366 (inner) - higher emissivity
+                                'Glass 4 NFRC ID': '',
+                                'Air Gap (mm)': 12
+                            }
+                        }
+                    ]
+                    
+                    for test in test_configs:
+                        st.write(f"**{test['name']}:**")
+                        errors, warnings = validate_igu_configuration(test['config'], catalog_df, rules)
+                        
+                        if errors:
+                            st.error(f"❌ Validation failed:")
+                            for error in errors:
+                                st.error(f"  • {error}")
+                        else:
+                            st.success("✅ Configuration passes all rules")
+                            
+                        if warnings:
+                            st.warning("⚠️ Warnings:")
+                            for warning in warnings:
+                                st.warning(f"  • {warning}")
+                        st.write("---")
+                else:
+                    st.error("❌ No glass catalog loaded for testing")
+            
+            # Summary of rules from catalog
             catalog_df = load_glass_catalog()
             if not catalog_df.empty:
-                # Test configuration with potential rule violations
-                test_configs = [
-                    {
-                        'name': 'Valid Triple Configuration',
-                        'config': {
-                            'IGU Type': 'Triple',
-                            'OA (inches)': 1.0,
-                            'Gas Type': '90K',
-                            'Glass 1 NFRC ID': 102,   # Generic 3mm (outer)
-                            'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
-                            'Glass 3 NFRC ID': 2011,  # LoE 272 (inner)
-                            'Glass 4 NFRC ID': '',
-                            'Air Gap (mm)': 12
-                        }
-                    },
-                    {
-                        'name': 'Emissivity Rule Test (should fail if enabled)',
-                        'config': {
-                            'IGU Type': 'Triple',
-                            'OA (inches)': 1.0,
-                            'Gas Type': '90K',
-                            'Glass 1 NFRC ID': 2011,  # LoE 272 (outer)
-                            'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
-                            'Glass 3 NFRC ID': 2154,  # LoE 366 (inner) - higher emissivity
-                            'Glass 4 NFRC ID': '',
-                            'Air Gap (mm)': 12
-                        }
-                    }
-                ]
+                st.subheader("📊 Rules Summary from Catalog")
+                col1, col2, col3 = st.columns(3)
                 
-                for test in test_configs:
-                    st.write(f"**{test['name']}:**")
-                    errors, warnings = validate_igu_configuration(test['config'], catalog_df, rules)
+                with col1:
+                    outer_count = len(catalog_df[catalog_df['Can_Outer'] == True])
+                    st.metric("Outer Glass Options", outer_count)
                     
-                    if errors:
-                        st.error(f"❌ Validation failed:")
-                        for error in errors:
-                            st.error(f"  • {error}")
-                    else:
-                        st.success("✅ Configuration passes all rules")
-                        
-                    if warnings:
-                        st.warning("⚠️ Warnings:")
-                        for warning in warnings:
-                            st.warning(f"  • {warning}")
-                    st.write("---")
-            else:
-                st.error("❌ No glass catalog loaded for testing")
-        
-        # Summary of rules from catalog
-        catalog_df = load_glass_catalog()
-        if not catalog_df.empty:
-            st.subheader("📊 Rules Summary from Catalog")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                outer_count = len(catalog_df[catalog_df['Can_Outer'] == True])
-                st.metric("Outer Glass Options", outer_count)
-                
-            with col2:
-                center_count = len(catalog_df[catalog_df['Can_Center'] == True])
-                st.metric("Center Glass Options", center_count)
-                
-            with col3:
-                quad_inner_count = len(catalog_df[catalog_df['Can_QuadInner'] == True])
-                st.metric("Quad Inner Options", quad_inner_count)
+                with col2:
+                    center_count = len(catalog_df[catalog_df['Can_Center'] == True])
+                    st.metric("Center Glass Options", center_count)
+                    
+                with col3:
+                    quad_inner_count = len(catalog_df[catalog_df['Can_QuadInner'] == True])
+                    st.metric("Quad Inner Options", quad_inner_count)
     
     # Save rules
     col1, col2 = st.columns(2)
