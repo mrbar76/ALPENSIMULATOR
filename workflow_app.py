@@ -8,6 +8,8 @@ import pandas as pd
 import time
 import os
 import glob
+import yaml
+import numpy as np
 from datetime import datetime
 import sys
 
@@ -145,6 +147,319 @@ def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
     is_valid, message = validate_spacer_thickness(air_gap_mm)
     
     return air_gap_mm, is_valid, message
+
+def load_generation_rules():
+    """Load IGU generation rules from YAML file"""
+    rules_file = 'igu_generation_rules.yaml'
+    if os.path.exists(rules_file):
+        with open(rules_file, 'r') as f:
+            return yaml.safe_load(f)
+    else:
+        # Return default rules if file doesn't exist
+        return {
+            'positioning_rules': {
+                'thickness_constraints': {
+                    'quad_inner_max_thickness': 1.1,
+                    'center_max_thickness': 2.0
+                }
+            },
+            'manufacturer_rules': {
+                'same_manufacturer_positions': {
+                    'enabled': True,
+                    'positions': ['outer', 'inner']
+                },
+                'compatible_manufacturers': [
+                    ['Cardinal', 'Cardinal'],
+                    ['Guardian', 'Guardian'],
+                    ['Generic', 'Generic'],
+                    ['Generic', 'Cardinal'],
+                    ['Cardinal', 'Generic'],
+                    ['Generic', 'Guardian'],
+                    ['Guardian', 'Generic']
+                ]
+            },
+            'spacer_rules': {
+                'thickness': {
+                    'minimum': 6,
+                    'maximum': 20,
+                    'increment': 1
+                }
+            }
+        }
+
+def save_generation_rules(rules):
+    """Save IGU generation rules to YAML file"""
+    rules_file = 'igu_generation_rules.yaml'
+    with open(rules_file, 'w') as f:
+        yaml.dump(rules, f, default_flow_style=False, indent=2)
+
+def extract_coating_type(glass_name):
+    """Extract coating type from glass name"""
+    glass_name = glass_name.lower()
+    
+    # Check for specific coating numbers
+    if '272' in glass_name:
+        return '272'
+    elif '277' in glass_name:
+        return '277'
+    elif '180' in glass_name:
+        return '180'
+    elif '366' in glass_name:
+        return '366'
+    elif 'i89' in glass_name:
+        return 'i89'
+    elif 'is-20' in glass_name:
+        return 'IS-20'
+    elif 'is-15' in glass_name:
+        return 'IS-15'
+    elif 'clear' in glass_name:
+        return 'clear'
+    else:
+        return 'clear'  # Default to clear if unknown
+
+def validate_igu_configuration(config, catalog_df, rules):
+    """Validate an IGU configuration against all rules"""
+    errors = []
+    warnings = []
+    
+    # Get glass info
+    glasses = {}
+    for pos in [1, 2, 3, 4]:
+        glass_id = config.get(f'Glass {pos} NFRC ID', '')
+        if glass_id:
+            glass_row = catalog_df[catalog_df['NFRC_ID'] == glass_id]
+            if not glass_row.empty:
+                glasses[pos] = glass_row.iloc[0].to_dict()
+    
+    # Validate manufacturer rules
+    if rules.get('manufacturer_rules', {}).get('same_manufacturer_positions', {}).get('enabled', False):
+        outer_glass = glasses.get(1, {})
+        inner_glass = glasses.get(4 if config.get('IGU Type') == 'Quad' else 3, {})
+        
+        if outer_glass and inner_glass:
+            outer_mfg = outer_glass.get('Manufacturer', '')
+            inner_mfg = inner_glass.get('Manufacturer', '')
+            
+            # Check if combination is allowed
+            compatible_pairs = rules.get('manufacturer_rules', {}).get('compatible_manufacturers', [])
+            is_compatible = any(
+                (outer_mfg in pair and inner_mfg in pair) or 
+                ([outer_mfg, inner_mfg] == pair) or 
+                ([inner_mfg, outer_mfg] == pair)
+                for pair in compatible_pairs
+            )
+            
+            if not is_compatible:
+                errors.append(f"Manufacturer incompatibility: {outer_mfg} and {inner_mfg} cannot be combined")
+    
+    # Validate emissivity rules
+    emissivity_rules = rules.get('coating_rules', {}).get('emissivity_rules', {})
+    if emissivity_rules.get('enabled', False):
+        outer_glass = glasses.get(1, {})
+        inner_glass = glasses.get(4 if config.get('IGU Type') == 'Quad' else 3, {})
+        
+        if outer_glass and inner_glass:
+            outer_coating = extract_coating_type(outer_glass.get('Short_Name', ''))
+            inner_coating = extract_coating_type(inner_glass.get('Short_Name', ''))
+            
+            valid_combinations = emissivity_rules.get('valid_combinations', {})
+            allowed_inner_coatings = valid_combinations.get(outer_coating, [])
+            
+            if inner_coating not in allowed_inner_coatings:
+                outer_emiss = emissivity_rules.get('coating_emissivity', {}).get(outer_coating, 0.84)
+                inner_emiss = emissivity_rules.get('coating_emissivity', {}).get(inner_coating, 0.84)
+                errors.append(f"Emissivity rule violation: Outer coating {outer_coating} (ε={outer_emiss}) cannot be paired with inner coating {inner_coating} (ε={inner_emiss}). Inner emissivity must be ≤ outer emissivity.")
+    
+    # Validate spacer rules
+    air_gap = config.get('Air Gap (mm)', 0)
+    spacer_rules = rules.get('spacer_rules', {}).get('thickness', {})
+    min_spacer = spacer_rules.get('minimum', 6)
+    max_spacer = spacer_rules.get('maximum', 20)
+    
+    if air_gap < min_spacer or air_gap > max_spacer:
+        errors.append(f"Spacer thickness {air_gap}mm outside allowed range ({min_spacer}-{max_spacer}mm)")
+    
+    # Validate gas fill rules
+    gas_rules = rules.get('gas_fill_rules', {})
+    gas_type = config.get('Gas Type', '')
+    
+    # Check if gas type is allowed
+    allowed_gases = gas_rules.get('allowed_gases', ['Air', '90K', '95A'])
+    if gas_type not in allowed_gases:
+        errors.append(f"Gas type '{gas_type}' not in allowed list: {allowed_gases}")
+    
+    # Check gas-spacer compatibility
+    gas_spacer_compat = gas_rules.get('gas_spacer_compatibility', {})
+    if gas_type in gas_spacer_compat:
+        min_gap, max_gap = gas_spacer_compat[gas_type]
+        if air_gap < min_gap or air_gap > max_gap:
+            warnings.append(f"Gas {gas_type} performs better with {min_gap}-{max_gap}mm spacers (current: {air_gap}mm)")
+    
+    # Check performance-based gas rules
+    perf_rules = gas_rules.get('performance_rules', {})
+    if perf_rules.get('enabled', False):
+        igu_type = config.get('IGU Type', '')
+        
+        # Quad pane gas recommendations
+        quad_rules = perf_rules.get('quad_pane_recommendations', {})
+        if quad_rules.get('enabled', False) and igu_type == 'Quad':
+            preferred_gas = quad_rules.get('preferred_gas', '95A')
+            if gas_type != preferred_gas:
+                warnings.append(f"Quad panes perform best with {preferred_gas} gas (current: {gas_type})")
+    
+    return errors, warnings
+
+def create_visual_rule_builder():
+    """Streamlined visual rule builder interface"""
+    st.header("🔧 Visual Rule Builder")
+    st.info("Build rules with simple drag-and-drop. No coding required!")
+    
+    # Initialize session state for rules
+    if 'visual_rules' not in st.session_state:
+        st.session_state.visual_rules = []
+    
+    # Rule templates for quick start
+    st.subheader("🚀 Quick Start Templates")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("🏭 Manufacturer\nCompatibility"):
+            st.session_state.rule_template = 'manufacturer'
+    
+    with col2:
+        if st.button("⛽ Gas-Spacer\nOptimization"):
+            st.session_state.rule_template = 'gas_spacer'
+    
+    with col3:
+        if st.button("🎯 Performance\nTargets"):
+            st.session_state.rule_template = 'performance'
+    
+    with col4:
+        if st.button("🔬 Advanced\nConstraints"):
+            st.session_state.rule_template = 'advanced'
+    
+    # Simple rule builder
+    st.divider()
+    st.subheader("➕ Build Custom Rule")
+    
+    with st.form("rule_builder"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**When this happens...**")
+            
+            # Condition builder
+            condition_type = st.selectbox(
+                "Choose condition type",
+                ["Glass property", "IGU configuration", "Performance target", "Component combination"]
+            )
+            
+            if condition_type == "Glass property":
+                property_type = st.selectbox("Property", ["Thickness", "Manufacturer", "Coating type"])
+                operator = st.selectbox("Operator", ["equals", "greater than", "less than"])
+                value = st.text_input("Value")
+                
+            elif condition_type == "IGU configuration":
+                property_type = st.selectbox("Property", ["IGU type", "OA size", "Gas type", "Air gap"])
+                operator = st.selectbox("Operator", ["equals", "not equals", "greater than", "less than"])
+                value = st.text_input("Value")
+                
+            elif condition_type == "Performance target":
+                property_type = st.selectbox("Property", ["U-value", "SHGC", "VT"])
+                operator = st.selectbox("Operator", ["greater than", "less than", "between"])
+                if operator == "between":
+                    min_val = st.number_input("Min value", 0.0)
+                    max_val = st.number_input("Max value", 1.0)
+                    value = f"{min_val}-{max_val}"
+                else:
+                    value = st.number_input("Value", 0.0)
+                    
+            else:  # Component combination
+                property_type = st.selectbox("Property", ["Manufacturer match", "Emissivity order", "Gas-spacer compatibility"])
+                operator = st.selectbox("Operator", ["must match", "must not match", "should optimize"])
+                value = st.text_input("Specification")
+        
+        with col2:
+            st.write("**Then do this...**")
+            
+            # Action builder
+            action_type = st.selectbox(
+                "Action type",
+                ["🚫 Block configuration", "⚠️ Show warning", "💡 Suggest improvement", "⚡ Prefer option"]
+            )
+            
+            message = st.text_area("Message to user", placeholder="Explain why this rule exists...")
+            
+            priority = st.selectbox("Priority", ["High", "Medium", "Low"])
+        
+        # Rule details
+        st.write("**Rule details**")
+        rule_name = st.text_input("Rule name", placeholder="Give this rule a descriptive name")
+        
+        # Submit
+        submitted = st.form_submit_button("🚀 Create Rule", type="primary")
+        
+        if submitted and rule_name:
+            new_rule = {
+                'id': len(st.session_state.visual_rules) + 1,
+                'name': rule_name,
+                'condition': {
+                    'type': condition_type,
+                    'property': property_type,
+                    'operator': operator,
+                    'value': value
+                },
+                'action': {
+                    'type': action_type,
+                    'message': message,
+                    'priority': priority
+                },
+                'enabled': True
+            }
+            
+            st.session_state.visual_rules.append(new_rule)
+            st.success(f"✅ Rule '{rule_name}' created!")
+            st.rerun()
+    
+    # Show existing rules
+    if st.session_state.visual_rules:
+        st.divider()
+        st.subheader("📋 Your Custom Rules")
+        
+        for i, rule in enumerate(st.session_state.visual_rules):
+            with st.expander(f"{rule['action']['type'][:2]} {rule['name']} ({rule['action']['priority']} priority)"):
+                col1, col2, col3 = st.columns([3, 1, 1])
+                
+                with col1:
+                    st.write(f"**When:** {rule['condition']['property']} {rule['condition']['operator']} {rule['condition']['value']}")
+                    st.write(f"**Then:** {rule['action']['type']} - {rule['action']['message']}")
+                
+                with col2:
+                    enabled = st.checkbox("Enabled", value=rule['enabled'], key=f"rule_enable_{rule['id']}")
+                    if enabled != rule['enabled']:
+                        st.session_state.visual_rules[i]['enabled'] = enabled
+                
+                with col3:
+                    if st.button("🗑️", key=f"rule_delete_{rule['id']}"):
+                        st.session_state.visual_rules.pop(i)
+                        st.rerun()
+    
+    # Quick examples
+    st.divider()
+    st.subheader("💡 Rule Examples")
+    
+    examples = [
+        "🏭 **Manufacturer Rule**: When outer manufacturer = Generic AND inner manufacturer ≠ Generic → Show warning 'Mixed manufacturers may have compatibility issues'",
+        "⛽ **Gas Rule**: When IGU type = Quad AND gas type ≠ 95A → Suggest improvement 'Quad panes perform best with 95A gas'", 
+        "📏 **Spacer Rule**: When air gap < 6mm OR air gap > 20mm → Block configuration 'Spacer thickness must be 6-20mm'",
+        "🎯 **Performance Rule**: When U-value target < 0.20 AND gas type = Air → Show warning 'Low U-values require argon gas fill'"
+    ]
+    
+    for example in examples:
+        st.info(example)
+    
+    return st.session_state.visual_rules
 
 def fix_quad_positioning_logic(catalog_df):
     """Fix positioning logic - thick glass can't be in quad center positions"""
@@ -465,7 +780,7 @@ st.subheader("Materials Science Approach: Smart Ingredients → Rules → Config
 # Progress indicator
 progress_steps = [
     "1️⃣ Smart Ingredient Management",
-    "2️⃣ Rule Configuration", 
+    "2️⃣ Generation Rules & Constraints", 
     "3️⃣ Generate Configurations",
     "4️⃣ Run Simulation",
     "5️⃣ Optimize & Filter"
@@ -525,50 +840,259 @@ if current_step == 1:
         st.session_state.workflow_step = 2
         st.rerun()
 
-# === STEP 2: RULE CONFIGURATION ===
+# === STEP 2: GENERATION RULES ===
 elif current_step == 2:
-    st.header("2️⃣ Rule Configuration")
-    st.subheader("Configure Rules for Each Ingredient Type")
+    st.header("2️⃣ Generation Rules & Constraints")
+    st.info("🔧 Configure rules for automatic IGU generation. Glass-specific rules (positioning, coatings) are managed in Step 1.")
     
-    if RULES_AVAILABLE:
-        config = AlpenRulesConfig()
+    # Load current rules
+    rules = load_generation_rules()
+    
+    # Choose interface mode
+    mode = st.radio(
+        "How would you like to configure rules?",
+        ["🎯 Quick Setup (Recommended)", "🔧 Visual Rule Builder", "⚙️ Advanced YAML"],
+        help="Quick Setup covers most common rules, Visual Builder for custom rules, Advanced for power users"
+    )
+    
+    if mode == "🎯 Quick Setup (Recommended)":
+        tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Validation"])
+    elif mode == "🔧 Visual Rule Builder":
+        st.divider()
+        return create_visual_rule_builder()
+    else:  # Advanced YAML
+        tab1, tab2, tab3, tab4 = st.tabs(["🏭 Manufacturer Rules", "📏 Spacer Constraints", "⛽ Gas Fill Rules", "🧪 Advanced YAML"])
+    
+    with tab1:
+        st.subheader("Manufacturer Compatibility")
+        
+        # Same manufacturer requirement
+        same_mfg_enabled = st.checkbox(
+            "Require same manufacturer for outer and inner glass",
+            value=rules.get('manufacturer_rules', {}).get('same_manufacturer_positions', {}).get('enabled', True),
+            help="Structural compatibility requirement"
+        )
+        
+        # Emissivity rules
+        st.subheader("Emissivity Rules")
+        emissivity_enabled = st.checkbox(
+            "Enable emissivity validation (inner ≤ outer)",
+            value=rules.get('coating_rules', {}).get('emissivity_rules', {}).get('enabled', True),
+            help="Example: LoE 366 outer can pair with LoE 272 inner, but not vice versa"
+        )
+        
+        if emissivity_enabled:
+            st.info("**Example Valid Combinations:**\n- Clear outer + any Low-E inner ✅\n- LoE 366 outer + LoE 272 inner ✅\n- LoE 272 outer + LoE 366 inner ❌")
+        
+        # Update rules
+        if 'manufacturer_rules' not in rules:
+            rules['manufacturer_rules'] = {}
+        rules['manufacturer_rules']['same_manufacturer_positions'] = {
+            'enabled': same_mfg_enabled,
+            'positions': ['outer', 'inner']
+        }
+        
+        if 'coating_rules' not in rules:
+            rules['coating_rules'] = {}
+        if 'emissivity_rules' not in rules['coating_rules']:
+            rules['coating_rules']['emissivity_rules'] = {}
+        rules['coating_rules']['emissivity_rules']['enabled'] = emissivity_enabled
+    
+    with tab2:
+        st.subheader("Spacer Thickness Constraints")
         
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            st.subheader("📊 Current Rules")
-            st.metric("Tolerance", f"{config.get_tolerance()}mm")
-            st.metric("Min Edge", f"{config.get_min_edge_nominal()}mm")
-            st.metric("Min Air Gap", f"{config.get_min_airgap()}mm")
-        
+            min_spacer = st.number_input(
+                "Minimum (mm)", 
+                min_value=1, max_value=50, step=1,
+                value=rules.get('spacer_rules', {}).get('thickness', {}).get('minimum', 6)
+            )
         with col2:
-            st.subheader("✨ Coating Rules")
-            st.text(f"Triple i89: Surface {config.get_i89_surface('triple')}")
-            st.text(f"Quad i89: Surface {config.get_i89_surface('quad')}")
-            st.text(f"Triple Low-E: {config.get_standard_lowe_surfaces('triple')}")
-            st.text(f"Quad Low-E: {config.get_standard_lowe_surfaces('quad')}")
-        
+            max_spacer = st.number_input(
+                "Maximum (mm)",
+                min_value=1, max_value=50, step=1, 
+                value=rules.get('spacer_rules', {}).get('thickness', {}).get('maximum', 20)
+            )
         with col3:
-            st.subheader("🔢 Expected Output")
-            try:
-                oa_df = pd.read_csv("input_oa_sizes.csv")
-                gas_df = pd.read_csv("input_gas_types.csv")
-                glass_df = pd.read_csv("unified_glass_catalog.csv")
-                
-                outer_count = len(glass_df[glass_df['Can_Outer'] == True])
-                center_count = len(glass_df[glass_df['Can_Center'] == True])
-                inner_count = len(glass_df[glass_df['Can_Inner'] == True])
-                
-                approx_configs = len(oa_df) * len(gas_df) * outer_count * center_count * inner_count
-                st.metric("Approx Configs", f"{approx_configs:,}")
-                st.metric("Gas Types", len(gas_df))
-                st.metric("OA Sizes", len(oa_df))
-                
-            except:
-                st.warning("Cannot estimate - input files missing")
+            increment = st.number_input(
+                "Increment (mm)",
+                min_value=0.1, max_value=5.0, step=0.1,
+                value=rules.get('spacer_rules', {}).get('thickness', {}).get('increment', 1.0)
+            )
+        
+        # Update spacer rules
+        if 'spacer_rules' not in rules:
+            rules['spacer_rules'] = {}
+        if 'thickness' not in rules['spacer_rules']:
+            rules['spacer_rules']['thickness'] = {}
+            
+        rules['spacer_rules']['thickness']['minimum'] = min_spacer
+        rules['spacer_rules']['thickness']['maximum'] = max_spacer
+        rules['spacer_rules']['thickness']['increment'] = increment
+        
+        # Show valid range
+        valid_range = list(range(int(min_spacer), int(max_spacer) + 1, int(increment)))
+        st.info(f"**Valid spacer thicknesses:** {min(valid_range)}-{max(valid_range)}mm in {increment}mm increments ({len(valid_range)} options)")
     
-    else:
-        st.error("❌ Configurable rules system not available")
+    with tab3:
+        st.subheader("Gas Fill Rules")
+        
+        # Gas-spacer compatibility warnings
+        gas_warnings_enabled = st.checkbox(
+            "Enable gas-spacer compatibility warnings",
+            value=True,
+            help="Warn when gas types are used outside optimal spacer ranges"
+        )
+        
+        # Quad pane gas recommendations  
+        quad_gas_enabled = st.checkbox(
+            "Enable quad pane gas recommendations",
+            value=rules.get('gas_fill_rules', {}).get('performance_rules', {}).get('quad_pane_recommendations', {}).get('enabled', True),
+            help="Recommend optimal gas fills for quad pane IGUs"
+        )
+        
+        if quad_gas_enabled:
+            preferred_quad_gas = st.selectbox(
+                "Preferred gas for quad panes",
+                options=["95A", "90K", "Air"],
+                index=0,
+                help="Gas type that performs best in quad pane configurations"
+            )
+        else:
+            preferred_quad_gas = "95A"
+        
+        # Show gas-spacer compatibility matrix
+        st.subheader("Gas-Spacer Compatibility Matrix")
+        gas_spacer_data = {
+            'Gas Type': ['Air', '90K', '95A'],
+            'Optimal Range (mm)': ['6-20 (any)', '8-18 (performance)', '10-16 (high performance)'],
+            'Performance': ['Standard', 'Enhanced', 'Premium']
+        }
+        st.table(pd.DataFrame(gas_spacer_data))
+        
+        # Update gas rules
+        if 'gas_fill_rules' not in rules:
+            rules['gas_fill_rules'] = {}
+        if 'performance_rules' not in rules['gas_fill_rules']:
+            rules['gas_fill_rules']['performance_rules'] = {}
+        if 'quad_pane_recommendations' not in rules['gas_fill_rules']['performance_rules']:
+            rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations'] = {}
+            
+        rules['gas_fill_rules']['performance_rules']['enabled'] = gas_warnings_enabled
+        rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['enabled'] = quad_gas_enabled
+        rules['gas_fill_rules']['performance_rules']['quad_pane_recommendations']['preferred_gas'] = preferred_quad_gas
+    
+    with tab4:
+        if mode == "⚙️ Advanced YAML":
+            st.subheader("Advanced YAML Configuration")
+            st.warning("⚠️ Advanced users only. Editing YAML directly can break rule validation.")
+            
+            # Show raw YAML for advanced editing
+            rules_yaml = yaml.dump(rules, default_flow_style=False, indent=2)
+            edited_yaml = st.text_area("Rules Configuration (YAML)", rules_yaml, height=400)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("💾 Update from YAML"):
+                    try:
+                        rules = yaml.safe_load(edited_yaml)
+                        save_generation_rules(rules)
+                        st.success("Rules updated from YAML")
+                        st.rerun()
+                    except yaml.YAMLError as e:
+                        st.error(f"YAML parsing error: {e}")
+            
+            with col2:
+                if st.button("🔄 Reset YAML"):
+                    st.rerun()
+        else:
+        st.subheader("Rule Validation")
+        
+        # Test rules with current catalog
+        if st.button("🧪 Test Rules Against Sample Configuration", type="primary"):
+            catalog_df = load_glass_catalog()
+            if not catalog_df.empty:
+                # Test configuration with potential rule violations
+                test_configs = [
+                    {
+                        'name': 'Valid Triple Configuration',
+                        'config': {
+                            'IGU Type': 'Triple',
+                            'OA (inches)': 1.0,
+                            'Gas Type': '90K',
+                            'Glass 1 NFRC ID': 102,   # Generic 3mm (outer)
+                            'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
+                            'Glass 3 NFRC ID': 2011,  # LoE 272 (inner)
+                            'Glass 4 NFRC ID': '',
+                            'Air Gap (mm)': 12
+                        }
+                    },
+                    {
+                        'name': 'Emissivity Rule Test (should fail if enabled)',
+                        'config': {
+                            'IGU Type': 'Triple',
+                            'OA (inches)': 1.0,
+                            'Gas Type': '90K',
+                            'Glass 1 NFRC ID': 2011,  # LoE 272 (outer)
+                            'Glass 2 NFRC ID': 107,   # Generic 1.1mm (center)
+                            'Glass 3 NFRC ID': 2154,  # LoE 366 (inner) - higher emissivity
+                            'Glass 4 NFRC ID': '',
+                            'Air Gap (mm)': 12
+                        }
+                    }
+                ]
+                
+                for test in test_configs:
+                    st.write(f"**{test['name']}:**")
+                    errors, warnings = validate_igu_configuration(test['config'], catalog_df, rules)
+                    
+                    if errors:
+                        st.error(f"❌ Validation failed:")
+                        for error in errors:
+                            st.error(f"  • {error}")
+                    else:
+                        st.success("✅ Configuration passes all rules")
+                        
+                    if warnings:
+                        st.warning("⚠️ Warnings:")
+                        for warning in warnings:
+                            st.warning(f"  • {warning}")
+                    st.write("---")
+            else:
+                st.error("❌ No glass catalog loaded for testing")
+        
+        # Summary of rules from catalog
+        catalog_df = load_glass_catalog()
+        if not catalog_df.empty:
+            st.subheader("📊 Rules Summary from Catalog")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                outer_count = len(catalog_df[catalog_df['Can_Outer'] == True])
+                st.metric("Outer Glass Options", outer_count)
+                
+            with col2:
+                center_count = len(catalog_df[catalog_df['Can_Center'] == True])
+                st.metric("Center Glass Options", center_count)
+                
+            with col3:
+                quad_inner_count = len(catalog_df[catalog_df['Can_QuadInner'] == True])
+                st.metric("Quad Inner Options", quad_inner_count)
+    
+    # Save rules
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 Save Generation Rules", type="primary"):
+            save_generation_rules(rules)
+            st.success("✅ Generation rules saved!")
+    
+    with col2:
+        if st.button("🔄 Reset to Defaults"):
+            if os.path.exists('igu_generation_rules.yaml'):
+                os.remove('igu_generation_rules.yaml')
+            st.success("✅ Rules reset to defaults!")
+            st.rerun()
     
     if st.button("Proceed to Step 3: Generate Configurations", type="primary"):
         st.session_state.workflow_step = 3
@@ -600,36 +1124,79 @@ elif current_step == 3:
                 import numpy as np
                 np.random.seed(42)  # For reproducible results
                 
-                # Generate data with proper lengths and spacer constraints
-                igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
-                oa_sizes = np.random.choice([0.88, 1.0], total_configs)
-                gas_types = np.random.choice(['90K', '95A'], total_configs)
-                glass_1_ids = np.random.choice([102, 103], total_configs)
-                glass_2_ids = np.random.choice([107, 102, 103], total_configs)
-                glass_3_ids = np.random.choice([102, 103], total_configs)
+                # Load catalog and filter by position capabilities
+                catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
                 
-                # Glass 4 only for Quad IGUs
-                glass_4_ids = []
-                for igu_type in igu_types:
-                    if igu_type == 'Quad':
-                        glass_4_ids.append(np.random.choice([102, 103]))
-                    else:
-                        glass_4_ids.append('')
+                # Get valid glasses by position (limited for fast generation)
+                outer_glasses = catalog_df[catalog_df['Can_Outer'] == True]['NFRC_ID'].head(4).tolist()
+                center_glasses = catalog_df[catalog_df['Can_Center'] == True]['NFRC_ID'].tolist()  
+                inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].head(4).tolist()
+                quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
                 
-                # Valid spacer thicknesses (6-20mm in 1mm increments)
+                # Generate valid configurations respecting positioning rules
+                valid_configs = []
+                igu_options = ['Triple', 'Quad']
+                oa_options = [0.88, 1.0]
+                gas_options = ['90K', '95A']
                 valid_spacers = get_valid_spacer_range()
-                air_gaps = np.random.choice(valid_spacers, total_configs)
                 
-                mock_configs = pd.DataFrame({
-                    'IGU Type': igu_types,
-                    'OA (in)': oa_sizes,
-                    'Gas Type': gas_types,
-                    'Glass 1 NFRC ID': glass_1_ids,
-                    'Glass 2 NFRC ID': glass_2_ids,
-                    'Glass 3 NFRC ID': glass_3_ids,
-                    'Glass 4 NFRC ID': glass_4_ids,
-                    'Air Gap (mm)': air_gaps
-                })
+                # Load current rules for validation
+                current_rules = load_generation_rules()
+                
+                while len(valid_configs) < total_configs:
+                    # Random selections
+                    igu_type = np.random.choice(igu_options)
+                    oa_size = np.random.choice(oa_options)
+                    gas_type = np.random.choice(gas_options)
+                    air_gap = np.random.choice(valid_spacers)
+                    
+                    # Position-appropriate glass selection
+                    glass_1 = np.random.choice(outer_glasses)  # Position 1 (outer)
+                    glass_3 = np.random.choice(inner_glasses)  # Position 3/4 (inner)
+                    
+                    if igu_type == 'Triple':
+                        glass_2 = np.random.choice(center_glasses)  # Position 2 (center)
+                        glass_4 = ''
+                        
+                        config = {
+                            'IGU Type': igu_type,
+                            'OA (inches)': oa_size,
+                            'Gas Type': gas_type,
+                            'Glass 1 NFRC ID': glass_1,
+                            'Glass 2 NFRC ID': glass_2,
+                            'Glass 3 NFRC ID': glass_3,
+                            'Glass 4 NFRC ID': glass_4,
+                            'Air Gap (mm)': air_gap
+                        }
+                        
+                        # Validate configuration against rules
+                        errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                        if not errors:  # Only add if no errors
+                            valid_configs.append(config)
+                        
+                    elif igu_type == 'Quad':
+                        if len(quad_inner_glasses) > 0 and len(center_glasses) > 0:
+                            glass_2 = np.random.choice(quad_inner_glasses)  # Position 2 (quad inner)
+                            glass_3_center = np.random.choice(center_glasses)  # Position 3 (center)
+                            
+                            config = {
+                                'IGU Type': igu_type,
+                                'OA (inches)': oa_size,
+                                'Gas Type': gas_type,
+                                'Glass 1 NFRC ID': glass_1,
+                                'Glass 2 NFRC ID': glass_2,
+                                'Glass 3 NFRC ID': glass_3_center,
+                                'Glass 4 NFRC ID': glass_3,  # Position 4 (outer)
+                                'Air Gap (mm)': air_gap
+                            }
+                            
+                            # Validate configuration against rules
+                            errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                            if not errors:  # Only add if no errors
+                                valid_configs.append(config)
+                
+                # Convert to DataFrame
+                mock_configs = pd.DataFrame(valid_configs)
                 
                 mock_configs.to_csv(config_file, index=False)
                 st.success(f"✅ Generated {len(mock_configs):,} configurations")
@@ -690,36 +1257,79 @@ elif current_step == 3:
                 import numpy as np
                 np.random.seed(42)  # For reproducible results
                 
-                # Generate data with proper lengths and spacer constraints
-                igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
-                oa_sizes = np.random.choice([0.88, 1.0, 1.25], total_configs)
-                gas_types = np.random.choice(['90K', '95A'], total_configs)
-                glass_1_ids = np.random.choice([102, 103, 119, 120], total_configs)
-                glass_2_ids = np.random.choice([107, 22501, 22720], total_configs)
-                glass_3_ids = np.random.choice([102, 103, 119, 120], total_configs)
+                # Load catalog and filter by position capabilities
+                catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
                 
-                # Glass 4 only for Quad IGUs
-                glass_4_ids = []
-                for igu_type in igu_types:
-                    if igu_type == 'Quad':
-                        glass_4_ids.append(np.random.choice([102, 103]))
-                    else:
-                        glass_4_ids.append('')
+                # Get valid glasses by position
+                outer_glasses = catalog_df[catalog_df['Can_Outer'] == True]['NFRC_ID'].tolist()
+                center_glasses = catalog_df[catalog_df['Can_Center'] == True]['NFRC_ID'].tolist()  
+                inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].tolist()
+                quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
                 
-                # Valid spacer thicknesses (6-20mm in 1mm increments)
+                # Generate valid configurations respecting positioning rules
+                valid_configs = []
+                igu_options = ['Triple', 'Quad']
+                oa_options = [0.88, 1.0, 1.25]
+                gas_options = ['90K', '95A']
                 valid_spacers = get_valid_spacer_range()
-                air_gaps = np.random.choice(valid_spacers, total_configs)
                 
-                mock_configs = pd.DataFrame({
-                    'IGU Type': igu_types,
-                    'OA (in)': oa_sizes,
-                    'Gas Type': gas_types,
-                    'Glass 1 NFRC ID': glass_1_ids,
-                    'Glass 2 NFRC ID': glass_2_ids,
-                    'Glass 3 NFRC ID': glass_3_ids,
-                    'Glass 4 NFRC ID': glass_4_ids,
-                    'Air Gap (mm)': air_gaps
-                })
+                progress_text = st.empty()
+                config_progress = st.progress(0)
+                
+                while len(valid_configs) < total_configs:
+                    # Random selections
+                    igu_type = np.random.choice(igu_options)
+                    oa_size = np.random.choice(oa_options)
+                    gas_type = np.random.choice(gas_options)
+                    air_gap = np.random.choice(valid_spacers)
+                    
+                    # Position-appropriate glass selection
+                    glass_1 = np.random.choice(outer_glasses)  # Position 1 (outer)
+                    glass_3 = np.random.choice(inner_glasses)  # Position 3/4 (inner)
+                    
+                    if igu_type == 'Triple':
+                        glass_2 = np.random.choice(center_glasses)  # Position 2 (center)
+                        glass_4 = ''
+                        
+                        config = {
+                            'IGU Type': igu_type,
+                            'OA (inches)': oa_size,
+                            'Gas Type': gas_type,
+                            'Glass 1 NFRC ID': glass_1,
+                            'Glass 2 NFRC ID': glass_2,
+                            'Glass 3 NFRC ID': glass_3,
+                            'Glass 4 NFRC ID': glass_4,
+                            'Air Gap (mm)': air_gap
+                        }
+                        valid_configs.append(config)
+                        
+                    elif igu_type == 'Quad':
+                        if len(quad_inner_glasses) > 0 and len(center_glasses) > 0:
+                            glass_2 = np.random.choice(quad_inner_glasses)  # Position 2 (quad inner)
+                            glass_3_center = np.random.choice(center_glasses)  # Position 3 (center)
+                            
+                            config = {
+                                'IGU Type': igu_type,
+                                'OA (inches)': oa_size,
+                                'Gas Type': gas_type,
+                                'Glass 1 NFRC ID': glass_1,
+                                'Glass 2 NFRC ID': glass_2,
+                                'Glass 3 NFRC ID': glass_3_center,
+                                'Glass 4 NFRC ID': glass_3,  # Position 4 (outer)
+                                'Air Gap (mm)': air_gap
+                            }
+                            valid_configs.append(config)
+                    
+                    # Update progress
+                    if len(valid_configs) % 1000 == 0:
+                        progress_pct = min(len(valid_configs) / total_configs, 1.0)
+                        config_progress.progress(progress_pct)
+                        progress_text.text(f"Generated {len(valid_configs):,} valid configurations...")
+                
+                # Convert to DataFrame and clean up progress displays
+                progress_text.empty()
+                config_progress.empty()
+                mock_configs = pd.DataFrame(valid_configs)
                 
                 mock_configs.to_csv(config_file, index=False)
                 st.success(f"✅ Generated {len(mock_configs):,} configurations")

@@ -1,0 +1,220 @@
+# IGU Generation Rules Configuration
+# Configure all constraints and validation rules for IGU generation
+
+# ========================================
+# POSITIONING RULES
+# ========================================
+positioning_rules:
+  # Thickness constraints by position
+  thickness_constraints:
+    quad_inner_max_thickness: 1.1  # mm - Maximum thickness for quad inner positions (2&3)
+    center_max_thickness: 2.0      # mm - Maximum thickness for center positions
+    
+  # Position capabilities (these should match catalog columns)
+  required_capabilities:
+    position_1: "Can_Outer"        # Outer glass position
+    position_2_triple: "Can_Center" # Center position in triple pane
+    position_2_quad: "Can_QuadInner" # Inner position in quad pane  
+    position_3_triple: "Can_Inner"  # Inner position in triple pane
+    position_3_quad: "Can_Center"   # Center position in quad pane
+    position_4_quad: "Can_Inner"    # Inner position in quad pane
+
+# ========================================
+# MANUFACTURER RULES
+# ========================================
+manufacturer_rules:
+  # Same manufacturer requirement for specific positions
+  same_manufacturer_positions:
+    enabled: true
+    positions: ["outer", "inner"]  # Positions 1 and 3/4 must be same manufacturer
+    description: "Outer and inner glasses must be from the same manufacturer for structural compatibility"
+  
+  # Manufacturer compatibility matrix
+  compatible_manufacturers:
+    - ["Cardinal", "Cardinal"]     # Cardinal with Cardinal
+    - ["Guardian", "Guardian"]     # Guardian with Guardian  
+    - ["Generic", "Generic"]       # Generic with Generic
+    - ["Generic", "Cardinal"]      # Generic can mix with Cardinal
+    - ["Cardinal", "Generic"]      # Cardinal can mix with Generic  
+    - ["Generic", "Guardian"]      # Generic can mix with Guardian
+    - ["Guardian", "Generic"]      # Guardian can mix with Generic
+    # - ["Cardinal", "Guardian"]   # Uncomment to allow Cardinal + Guardian
+    
+  # Manufacturer restrictions
+  restrictions:
+    high_performance_only:
+      manufacturers: ["Guardian"]
+      coatings: ["i89", "IS-20", "IS-15"]
+      description: "High performance coatings only available from specific manufacturers"
+
+# ========================================
+# COATING RULES  
+# ========================================
+coating_rules:
+  # Coating type constraints
+  type_constraints:
+    soft_coat_protected: true      # Soft coats must be in protected positions (2,3,4,5)
+    hard_coat_flexibility: true    # Hard coats can be in any position
+    
+  # Emissivity rules
+  emissivity_rules:
+    enabled: true
+    description: "Inner glass emissivity must be equal to or lower than outer glass"
+    # Emissivity values by coating type (approximate)
+    coating_emissivity:
+      "clear": 0.84               # Clear glass baseline
+      "272": 0.04                 # LoE 272 (low emissivity)
+      "277": 0.04                 # LoE 277 (low emissivity)  
+      "180": 0.02                 # LoE 180 (very low emissivity)
+      "366": 0.05                 # LoE 366 (low emissivity)
+      "i89": 0.02                 # i89 high performance (very low)
+      "IS-20": 0.02               # Guardian IS-20 (very low)
+      "IS-15": 0.02               # Guardian IS-15 (very low)
+    
+    # Valid combinations (outer_coating: [allowed_inner_coatings])
+    valid_combinations:
+      "clear": ["clear", "272", "277", "180", "366", "i89", "IS-20", "IS-15"]  # Clear outer allows any inner
+      "366": ["366", "272", "277", "180", "i89", "IS-20", "IS-15"]            # 366 outer allows equal or lower
+      "272": ["272", "277", "180", "i89", "IS-20", "IS-15"]                   # 272 outer allows equal or lower  
+      "277": ["272", "277", "180", "i89", "IS-20", "IS-15"]                   # 277 outer allows equal or lower
+      "180": ["180", "i89", "IS-20", "IS-15"]                                 # 180 outer allows equal or lower
+      "i89": ["i89", "IS-20", "IS-15"]                                        # i89 outer allows equal or lower
+      "IS-20": ["i89", "IS-20", "IS-15"]                                      # IS-20 outer allows equal or lower
+      "IS-15": ["i89", "IS-20", "IS-15"]                                      # IS-15 outer allows equal or lower
+    
+  # Coating combinations
+  allowed_combinations:
+    max_coatings_per_igu: 2       # Maximum number of coated glasses per IGU
+    coating_conflicts:
+      - ["i89", "LoE-180"]        # Conflicting coating types
+      
+  # Performance requirements
+  performance_targets:
+    u_value_range: [0.15, 0.35]   # Acceptable U-value range  
+    shgc_range: [0.20, 0.70]      # Acceptable SHGC range
+    vt_minimum: 0.30              # Minimum visible transmittance
+
+# ========================================
+# SPACER RULES
+# ========================================
+spacer_rules:
+  # Thickness constraints
+  thickness:
+    minimum: 6                    # mm
+    maximum: 20                   # mm  
+    increment: 1                  # mm (must be whole numbers)
+    
+  # Optimal ranges for different IGU types
+  optimal_ranges:
+    triple_pane: [10, 16]         # mm - optimal for triple pane
+    quad_pane: [8, 12]            # mm - optimal for quad pane
+    
+  # Air gap calculations
+  air_gap_rules:
+    calculate_from_oa: true       # Calculate air gap from overall thickness
+    validate_feasibility: true    # Ensure air gaps are physically possible
+
+# ========================================
+# GAS FILL RULES
+# ========================================
+gas_fill_rules:
+  # Allowed gas types
+  allowed_gases:
+    - "Air"
+    - "90K"                       # 90% Argon, 10% Air
+    - "95A"                       # 95% Argon, 5% Air
+    
+  # Gas compatibility with spacer thickness
+  gas_spacer_compatibility:
+    "Air": [6, 20]               # Air works with any spacer thickness
+    "90K": [8, 18]               # Argon needs specific thickness for performance
+    "95A": [10, 16]              # High argon concentration optimal range
+  
+  # Performance-based gas rules
+  performance_rules:
+    enabled: true
+    high_performance_gas_required:
+      min_u_value: 0.20           # U-values below 0.20 require argon fill
+      required_gases: ["90K", "95A"]
+    
+    quad_pane_recommendations:
+      enabled: true
+      preferred_gas: "95A"        # Quad panes work best with high argon
+      fallback_gas: "90K"
+
+# ========================================
+# SIZE CONSTRAINTS
+# ========================================
+size_constraints:
+  # Overall thickness (OA) constraints
+  overall_thickness:
+    available_sizes: [0.88, 1.0, 1.25]  # inches
+    custom_sizes_allowed: false
+    
+  # Size-dependent rules
+  size_rules:
+    thick_oa_requirements:
+      minimum_oa: 1.0             # inches - minimum for certain configurations
+      required_for: ["quad_pane", "high_performance_coatings"]
+
+# ========================================
+# VALIDATION RULES
+# ========================================
+validation_rules:
+  # Required validations
+  mandatory_checks:
+    - "positioning_compliance"
+    - "manufacturer_compatibility" 
+    - "thickness_constraints"
+    - "spacer_validation"
+    - "coating_rules"
+    
+  # Warning levels
+  warning_thresholds:
+    performance_deviation: 0.10   # 10% deviation from targets triggers warning
+    unusual_combinations: true    # Warn for uncommon but valid combinations
+    
+  # Error conditions (will reject configuration)
+  error_conditions:
+    - "invalid_position_assignment"
+    - "thickness_violation"
+    - "manufacturer_conflict"
+    - "impossible_air_gap"
+
+# ========================================
+# GENERATION PREFERENCES
+# ========================================
+generation_preferences:
+  # Weighting for random generation
+  igu_type_weights:
+    triple_pane: 0.6              # 60% triple pane
+    quad_pane: 0.4                # 40% quad pane
+    
+  # Manufacturer distribution  
+  manufacturer_weights:
+    Cardinal: 0.4
+    Guardian: 0.3
+    Generic: 0.3
+    
+  # Gas fill preferences
+  gas_weights:
+    "Air": 0.2
+    "90K": 0.5
+    "95A": 0.3
+    
+  # Prefer optimal configurations
+  optimize_for_performance: true
+  avoid_edge_cases: true          # Avoid configurations at constraint limits
+
+# ========================================
+# CUSTOM RULES
+# ========================================
+custom_rules:
+  # User-defined rules can be added here
+  enabled: true
+  rules: []
+  # Example custom rule:
+  # - name: "premium_coating_rule"
+  #   condition: "coating_type == 'i89'"
+  #   requirement: "oa_size >= 1.0"
+  #   message: "Premium coatings require minimum 1.0 inch OA"
