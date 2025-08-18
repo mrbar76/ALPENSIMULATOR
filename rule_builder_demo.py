@@ -115,9 +115,9 @@ def main():
             'difficulty': 'Visual Builder'
         },
         {
-            'title': '🎯 Performance Targets',
-            'description': 'Enforce performance requirements',
-            'rule': "When U-value target < 0.20 AND gas type = Air → Block configuration",
+            'title': '📏 Spacer Range Validation',
+            'description': 'Ensure spacer thickness stays within manufacturing limits',
+            'rule': "When spacer thickness < 6mm OR spacer thickness > 20mm → Block configuration",
             'difficulty': 'Visual Builder'
         },
         {
