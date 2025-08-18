@@ -10,11 +10,26 @@ import os
 import glob
 import yaml
 import numpy as np
+import requests
+import pickle
 from datetime import datetime
 import sys
 
 # Add current directory to path
 sys.path.append('.')
+
+# === IGSDB API CONFIGURATION ===
+API_KEY = "0e94db9c8cda032d3eaa083e21984350c17633ca"
+IGSDB_HEADERS = {
+    "accept": "application/json",
+    "Authorization": f"Token {API_KEY}"
+}
+CACHE_FILE = "igsdb_metadata_cache.pkl"
+
+# Manufacturing constants from original system
+TOL = 0.3  # mm tolerance for measured thickness
+MIN_EDGE_NOMINAL = 3.0  # mm for outer/inner nominal
+MIN_AIRGAP = 3.0  # mm minimum air gap
 
 try:
     from configurable_rules import AlpenRulesConfig
@@ -118,8 +133,137 @@ def get_valid_spacer_range():
     """Get array of valid spacer thicknesses (6-20mm in 1mm increments)"""
     return list(range(6, 21))  # 6, 7, 8, ..., 20
 
+# === IGSDB API FUNCTIONS (from original system) ===
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def get_product_id_from_nfrc(nfrc_id: int) -> int:
+    """Get IGSDB product ID from NFRC ID"""
+    url = f"https://igsdb.lbl.gov/api/v1/products?type=glazing&nfrc_id={nfrc_id}"
+    try:
+        resp = requests.get(url, headers=IGSDB_HEADERS, timeout=5)
+        if not resp.ok:
+            return None
+        data = resp.json()
+        return data[0].get("product_id") if data else None
+    except Exception as e:
+        st.error(f"Error fetching product ID for NFRC {nfrc_id}: {e}")
+        return None
+
+@st.cache_data(ttl=3600)
+def fetch_igsdb_metadata(prod_id: int) -> dict:
+    """Fetch glass metadata from IGSDB"""
+    if not prod_id:
+        return {}
+    try:
+        resp = requests.get(f"https://igsdb.lbl.gov/api/v1/products/{prod_id}/", headers=IGSDB_HEADERS, timeout=5)
+        if not resp.ok:
+            return {}
+        d = resp.json()
+        md = d.get("measured_data", {})
+        thickness = md.get("thickness") if md.get("thickness") is not None else d.get("thickness", 0)*25.4
+        manufacturer = d.get("manufacturer_name") or d.get("manufacturer", {}).get("name","Unknown")
+        cs = (d.get("coated_side") or "none").lower()
+        if cs == "none":
+            for layer in d.get("layers", []):
+                if layer.get("type") == "coating":
+                    cs = layer.get("location","none").lower()
+                    break
+        cn = d.get("coating_name") or "none"
+        return {
+            "thickness_mm": round(float(thickness), 2),
+            "manufacturer": manufacturer,
+            "coating_side": cs,
+            "coating_name": cn
+        }
+    except Exception as e:
+        st.error(f"Error fetching metadata for product {prod_id}: {e}")
+        return {}
+
+def load_igsdb_cache():
+    """Load cached IGSDB data"""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'rb') as f:
+                return pickle.load(f)
+        except:
+            return {}
+    return {}
+
+def save_igsdb_cache(cache):
+    """Save IGSDB cache"""
+    try:
+        with open(CACHE_FILE, 'wb') as f:
+            pickle.dump(cache, f)
+    except:
+        pass
+
+@st.cache_data(ttl=3600)
+def get_glass_metadata(nfrc_id: int) -> dict:
+    """Get glass metadata with caching"""
+    cache = load_igsdb_cache()
+    
+    if nfrc_id not in cache:
+        pid = get_product_id_from_nfrc(nfrc_id)
+        if pid:
+            meta = fetch_igsdb_metadata(pid)
+            cache[nfrc_id] = meta
+            save_igsdb_cache(cache)
+            return meta
+        else:
+            cache[nfrc_id] = {}
+            save_igsdb_cache(cache)
+            return {}
+    
+    return cache[nfrc_id]
+
+# === MANUFACTURING VALIDATION FUNCTIONS ===
+
+def edges_manufacturer_match(m_o: str, m_i: str) -> bool:
+    """Check if outer and inner glass manufacturers are compatible"""
+    if not m_o or not m_i:
+        return False
+    mo = m_o.strip().lower()
+    mi = m_i.strip().lower()
+    if "generic" in (mo, mi):
+        return True
+    # Allow if either is a substring of the other
+    return mo in mi or mi in mo
+
+def parse_lowe_value(name: str) -> int:
+    """Extract numeric value from Low-E coating name for ordering"""
+    for tok in name.replace('-', ' ').split():
+        if tok.isdigit(): 
+            return int(tok)
+        if tok.startswith('i') and tok[1:].isdigit(): 
+            return int(tok[1:])
+    return 0
+
+def validate_coating_conflicts(glass_configs: list) -> bool:
+    """Validate that no two coatings conflict on same glass lite"""
+    coatings = []
+    for i, config in enumerate(glass_configs):
+        meta = config.get('meta', {})
+        coating_name = meta.get('coating_name', 'none')
+        if coating_name.lower() != 'none':
+            coatings.append({
+                'glass_position': i,
+                'coating': coating_name,
+                'nfrc_id': config.get('nfrc_id')
+            })
+    
+    # Check for conflicts (same NFRC ID with multiple coatings)
+    nfrc_coatings = {}
+    for coating in coatings:
+        nfrc_id = coating['nfrc_id']
+        if nfrc_id in nfrc_coatings:
+            # Multiple coatings on same glass lite - conflict!
+            return False
+        nfrc_coatings[nfrc_id] = coating
+    
+    return True
+
 def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
-    """Calculate air gap thickness from OA and glass thicknesses"""
+    """Calculate air gap thickness from OA and glass thicknesses - PROPER VERSION"""
     # Convert OA to mm
     oa_mm = oa_inches * 25.4
     
@@ -135,18 +279,11 @@ def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
     elif igu_type == 'Quad':
         num_gaps = 3
     else:
-        num_gaps = 1
+        return 0.0
     
-    # Air gap per space
+    # Calculate air gap per space
     air_gap_mm = available_space / num_gaps
-    
-    # Round to nearest 1mm
-    air_gap_mm = round(air_gap_mm)
-    
-    # Validate spacer constraints
-    is_valid, message = validate_spacer_thickness(air_gap_mm)
-    
-    return air_gap_mm, is_valid, message
+    return round(air_gap_mm, 2)
 
 def load_generation_rules():
     """Load IGU generation rules from YAML file"""
@@ -1134,6 +1271,13 @@ elif current_step == 3:
                 center_glasses = catalog_df[catalog_df['Can_Center'] == True]['NFRC_ID'].tolist()  
                 inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].head(4).tolist()
                 quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
+                
+                # Pre-fetch metadata for selected glasses to improve performance
+                st.info("🔄 Pre-fetching glass metadata from IGSDB...")
+                metadata_cache = {}
+                all_glass_ids = set(outer_glasses + center_glasses + inner_glasses + quad_inner_glasses)
+                for nfrc_id in all_glass_ids:
+                    metadata_cache[nfrc_id] = get_glass_metadata(nfrc_id)
                 
                 # Generate valid configurations respecting positioning rules
                 valid_configs = []
