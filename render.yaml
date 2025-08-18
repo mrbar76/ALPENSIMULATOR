@@ -1,7 +1,7 @@
 services:
   - type: web
-    name: alpen-advisor
+    name: alpensimulator
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run alpen_advisor_v46.py --server.port $PORT --server.address 0.0.0.0
+    startCommand: streamlit run workflow_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
     plan: free
