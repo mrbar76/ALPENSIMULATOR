@@ -1145,7 +1145,12 @@ elif current_step == 3:
                 # Load current rules for validation
                 current_rules = load_generation_rules()
                 
-                while len(valid_configs) < total_configs:
+                # Safety mechanism: limit total generation attempts
+                max_attempts = total_configs * 5  # Allow up to 5x attempts to find valid configs
+                attempts = 0
+                
+                while len(valid_configs) < total_configs and attempts < max_attempts:
+                    attempts += 1
                     # Random selections
                     igu_type = np.random.choice(igu_options)
                     oa_size = np.random.choice(oa_options)
@@ -1201,7 +1206,12 @@ elif current_step == 3:
                 mock_configs = pd.DataFrame(valid_configs)
                 
                 mock_configs.to_csv(config_file, index=False)
-                st.success(f"✅ Generated {len(mock_configs):,} configurations")
+                
+                # Show results with attempt info
+                if len(valid_configs) < total_configs:
+                    st.warning(f"⚠️ Generated {len(valid_configs):,} configurations (target: {total_configs:,}) after {attempts:,} attempts. Rules may be too restrictive.")
+                else:
+                    st.success(f"✅ Generated {len(mock_configs):,} configurations in {attempts:,} attempts")
     
     with col2:
         st.subheader("🔥 Full Generate")
@@ -1275,10 +1285,18 @@ elif current_step == 3:
                 gas_options = ['90K', '95A']
                 valid_spacers = get_valid_spacer_range()
                 
+                # Load current rules for validation
+                current_rules = load_generation_rules()
+                
+                # Safety mechanism: limit total generation attempts
+                max_attempts = total_configs * 3  # Allow up to 3x attempts for full generation
+                attempts = 0
+                
                 progress_text = st.empty()
                 config_progress = st.progress(0)
                 
-                while len(valid_configs) < total_configs:
+                while len(valid_configs) < total_configs and attempts < max_attempts:
+                    attempts += 1
                     # Random selections
                     igu_type = np.random.choice(igu_options)
                     oa_size = np.random.choice(oa_options)
@@ -1303,7 +1321,11 @@ elif current_step == 3:
                             'Glass 4 NFRC ID': glass_4,
                             'Air Gap (mm)': air_gap
                         }
-                        valid_configs.append(config)
+                        
+                        # Validate configuration against rules
+                        errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                        if not errors:  # Only add if no errors
+                            valid_configs.append(config)
                         
                     elif igu_type == 'Quad':
                         if len(quad_inner_glasses) > 0 and len(center_glasses) > 0:
@@ -1320,7 +1342,11 @@ elif current_step == 3:
                                 'Glass 4 NFRC ID': glass_3,  # Position 4 (outer)
                                 'Air Gap (mm)': air_gap
                             }
-                            valid_configs.append(config)
+                            
+                            # Validate configuration against rules
+                            errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                            if not errors:  # Only add if no errors
+                                valid_configs.append(config)
                     
                     # Update progress
                     if len(valid_configs) % 1000 == 0:
@@ -1334,7 +1360,12 @@ elif current_step == 3:
                 mock_configs = pd.DataFrame(valid_configs)
                 
                 mock_configs.to_csv(config_file, index=False)
-                st.success(f"✅ Generated {len(mock_configs):,} configurations")
+                
+                # Show results with attempt info
+                if len(valid_configs) < total_configs:
+                    st.warning(f"⚠️ Generated {len(valid_configs):,} configurations (target: {total_configs:,}) after {attempts:,} attempts. Rules may be too restrictive.")
+                else:
+                    st.success(f"✅ Generated {len(mock_configs):,} configurations in {attempts:,} attempts")
     
     # Show existing configurations
     try:
