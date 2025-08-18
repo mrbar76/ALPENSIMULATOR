@@ -1007,7 +1007,7 @@ elif current_step == 2:
                 if st.button("🔄 Reset YAML"):
                     st.rerun()
         else:
-        st.subheader("Rule Validation")
+            st.subheader("Rule Validation")
         
         # Test rules with current catalog
         if st.button("🧪 Test Rules Against Sample Configuration", type="primary"):
