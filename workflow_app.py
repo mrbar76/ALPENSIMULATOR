@@ -920,7 +920,7 @@ elif current_step == 2:
                 increment = st.number_input(
                     "Increment (mm)",
                     min_value=0.1, max_value=5.0, step=0.1,
-                    value=rules.get('spacer_rules', {}).get('thickness', {}).get('increment', 1.0)
+                    value=float(rules.get('spacer_rules', {}).get('thickness', {}).get('increment', 1.0))
                 )
             
             # Update spacer rules
