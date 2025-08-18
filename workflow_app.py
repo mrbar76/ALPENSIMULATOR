@@ -102,6 +102,50 @@ def get_smart_flip_recommendation(glass_name, position, coating_type=None, notes
     
     return recommendations.get(coating_type, recommendations['clear'])
 
+def validate_spacer_thickness(thickness_mm):
+    """Validate spacer thickness: 6-20mm in 1mm increments"""
+    if thickness_mm < 6 or thickness_mm > 20:
+        return False, f"Spacer thickness {thickness_mm}mm out of range (6-20mm)"
+    
+    if thickness_mm != round(thickness_mm):
+        return False, f"Spacer thickness {thickness_mm}mm must be in 1mm increments"
+    
+    return True, "Valid spacer thickness"
+
+def get_valid_spacer_range():
+    """Get array of valid spacer thicknesses (6-20mm in 1mm increments)"""
+    return list(range(6, 21))  # 6, 7, 8, ..., 20
+
+def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
+    """Calculate air gap thickness from OA and glass thicknesses"""
+    # Convert OA to mm
+    oa_mm = oa_inches * 25.4
+    
+    # Total glass thickness
+    total_glass_mm = sum(glass_thicknesses_mm)
+    
+    # Available space for air gaps
+    available_space = oa_mm - total_glass_mm
+    
+    # Number of air gaps
+    if igu_type == 'Triple':
+        num_gaps = 2
+    elif igu_type == 'Quad':
+        num_gaps = 3
+    else:
+        num_gaps = 1
+    
+    # Air gap per space
+    air_gap_mm = available_space / num_gaps
+    
+    # Round to nearest 1mm
+    air_gap_mm = round(air_gap_mm)
+    
+    # Validate spacer constraints
+    is_valid, message = validate_spacer_thickness(air_gap_mm)
+    
+    return air_gap_mm, is_valid, message
+
 def fix_quad_positioning_logic(catalog_df):
     """Fix positioning logic - thick glass can't be in quad center positions"""
     for idx, row in catalog_df.iterrows():
@@ -291,6 +335,22 @@ def create_interactive_catalog_editor():
         if thickness and thickness > 2.0 and row['Can_QuadInner']:
             warnings.append(f"⚠️ {row['Short_Name']}: Thick glass ({thickness}mm) cannot be in Quad center positions")
     
+    # Add spacer constraint information
+    st.subheader("📏 Spacer Constraints")
+    st.info("🔧 **Spacer Rules**: 6-20mm thickness in 1mm increments only")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Min Spacer", "6mm")
+    with col2:
+        st.metric("Max Spacer", "20mm") 
+    with col3:
+        st.metric("Increment", "1mm")
+    
+    # Show valid spacer range
+    valid_spacers = get_valid_spacer_range()
+    st.write(f"**Valid spacer thicknesses:** {', '.join(map(str, valid_spacers))}mm")
+    
     if warnings:
         for warning in warnings:
             st.warning(warning)
@@ -308,6 +368,7 @@ def create_mock_results(df, limit=None):
     for idx, row in result_df.iterrows():
         igu_type = row.get('IGU Type', 'Triple')
         gas_type = row.get('Gas Type', 'Air')
+        air_gap = row.get('Air Gap (mm)', 12)  # Default to 12mm if missing
         
         # Base performance by IGU type
         if igu_type == 'Triple':
@@ -324,8 +385,16 @@ def create_mock_results(df, limit=None):
         
         u_mult, shgc_mult, vt_mult = gas_effects.get(gas_type, gas_effects['Air'])
         
+        # Air gap effect on U-value (thicker gaps = better insulation, up to optimal point)
+        if air_gap < 10:
+            gap_u_mult = 1.1  # Thin gaps are less efficient
+        elif air_gap > 16:
+            gap_u_mult = 1.05  # Very thick gaps start to have convection
+        else:
+            gap_u_mult = 0.95  # Optimal range
+        
         # Apply effects with variation
-        u_value = base_u * u_mult + np.random.normal(0, 0.02)
+        u_value = base_u * u_mult * gap_u_mult + np.random.normal(0, 0.02)
         shgc = base_shgc * shgc_mult + np.random.normal(0, 0.03)
         vt = base_vt * vt_mult + np.random.normal(0, 0.02)
         
@@ -530,7 +599,7 @@ elif current_step == 3:
                 import numpy as np
                 np.random.seed(42)  # For reproducible results
                 
-                # Generate data with proper lengths
+                # Generate data with proper lengths and spacer constraints
                 igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
                 oa_sizes = np.random.choice([0.88, 1.0], total_configs)
                 gas_types = np.random.choice(['90K', '95A'], total_configs)
@@ -546,7 +615,9 @@ elif current_step == 3:
                     else:
                         glass_4_ids.append('')
                 
-                air_gaps = np.random.choice([7.51, 4.84], total_configs)
+                # Valid spacer thicknesses (6-20mm in 1mm increments)
+                valid_spacers = get_valid_spacer_range()
+                air_gaps = np.random.choice(valid_spacers, total_configs)
                 
                 mock_configs = pd.DataFrame({
                     'IGU Type': igu_types,
@@ -579,7 +650,7 @@ elif current_step == 3:
                 import numpy as np
                 np.random.seed(42)  # For reproducible results
                 
-                # Generate data with proper lengths
+                # Generate data with proper lengths and spacer constraints
                 igu_types = np.random.choice(['Triple', 'Quad'], total_configs)
                 oa_sizes = np.random.choice([0.88, 1.0, 1.25], total_configs)
                 gas_types = np.random.choice(['90K', '95A'], total_configs)
@@ -595,7 +666,9 @@ elif current_step == 3:
                     else:
                         glass_4_ids.append('')
                 
-                air_gaps = np.random.choice([7.51, 4.84, 5.2], total_configs)
+                # Valid spacer thicknesses (6-20mm in 1mm increments)
+                valid_spacers = get_valid_spacer_range()
+                air_gaps = np.random.choice(valid_spacers, total_configs)
                 
                 mock_configs = pd.DataFrame({
                     'IGU Type': igu_types,
