@@ -1550,29 +1550,38 @@ elif current_step == 3:
         st.write(f"• Center glass ≤ 1.1mm thick") 
         st.write(f"• Air gap ≥ {MIN_AIRGAP}mm")
         st.write(f"• Thickness tolerance: ±{TOL}mm")
-        
+    
     # Show existing configurations
     try:
-                for i in range(100):
-                    time.sleep(0.01)
-                    progress_bar.progress(i + 1)
-                
-                # Create mock config data with proper array lengths
-                total_configs = 2000
-                
-                import numpy as np
-                np.random.seed(42)  # For reproducible results
-                
-                # Load catalog and filter by position capabilities
-                catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
-                
-                # Get valid glasses by position (limited for fast generation)
-                outer_glasses = catalog_df[catalog_df['Can_Outer'] == True]['NFRC_ID'].head(4).tolist()
-                center_glasses = catalog_df[catalog_df['Can_Center'] == True]['NFRC_ID'].tolist()  
-                inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].head(4).tolist()
-                quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
-                
-                # Pre-fetch metadata for selected glasses to improve performance
+        if os.path.exists(config_file):
+            df = pd.read_csv(config_file)
+            st.success(f"✅ Found {len(df):,} configurations")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Input Configurations", f"{len(df):,}")
+            with col2:
+                unique_igu_types = df['IGU Type'].nunique()
+                st.metric("IGU Types", unique_igu_types)
+            
+            # Show preview
+            st.subheader("Configuration Preview")
+            st.dataframe(df.head(), use_container_width=True)
+            
+            if st.button("Proceed to Step 4: Run Simulation", type="primary"):
+                st.session_state.workflow_step = 4
+                st.rerun()
+        
+    except FileNotFoundError:
+        st.error("❌ No configurations found. Please run a generator first.")
+
+elif current_step == 4:
+    st.header("4️⃣ Run Thermal Simulation")
+    st.subheader("Thermal Performance Analysis")
+    
+    try:
+        df = pd.read_csv("igu_simulation_input_table.csv")
+        st.success(f"✅ Loaded {len(df):,} configurations")
                 st.info("🔄 Pre-fetching glass metadata from IGSDB...")
                 metadata_cache = {}
                 all_glass_ids = set(outer_glasses + center_glasses + inner_glasses + quad_inner_glasses)
