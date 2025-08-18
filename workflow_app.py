@@ -262,7 +262,7 @@ def validate_coating_conflicts(glass_configs: list) -> bool:
     
     return True
 
-def generate_configurations_with_physics(catalog_df, current_rules, max_configs=2000):
+def generate_configurations_with_physics(catalog_df, current_rules, max_configs=2000, debug=True):
     """Generate configurations using proper physics from original system"""
     
     # Filter glasses by position capabilities  
@@ -271,9 +271,26 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
     inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].tolist()
     quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
     
+    if debug:
+        st.info(f"📊 **Glass Availability:** {len(outer_glasses)} outer, {len(center_glasses)} center, {len(inner_glasses)} inner, {len(quad_inner_glasses)} quad-inner")
+    
     # Configuration options
     oa_options = [0.88, 1.0, 1.25]  # Standard OA sizes
     gas_options = ['90K', '95A']
+    
+    # Debug counters
+    debug_counters = {
+        'total_attempts': 0,
+        'missing_metadata': 0,
+        'edge_too_thin': 0,
+        'thickness_mismatch': 0,
+        'manufacturer_mismatch': 0,
+        'center_too_thick': 0,
+        'air_gap_too_small': 0,
+        'coating_conflicts': 0,
+        'rule_validation_failed': 0,
+        'valid_configs': 0
+    }
     
     st.info("🔄 Fetching real glass metadata from IGSDB...")
     
@@ -313,6 +330,7 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
                         if len(valid_configs) >= max_configs // 2:
                             break
                         
+                        debug_counters['total_attempts'] += 1
                         attempts += 1
                         if attempts > max_attempts:
                             break
@@ -323,21 +341,36 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
                         m_i = metadata_cache.get(inner_id, {})
                         
                         if not (m_o and m_c and m_i):
+                            debug_counters['missing_metadata'] += 1
+                            if debug and debug_counters['missing_metadata'] <= 3:
+                                st.warning(f"🔍 Missing metadata: outer={outer_id} ({bool(m_o)}), center={center_id} ({bool(m_c)}), inner={inner_id} ({bool(m_i)})")
                             continue
                         
                         # Apply manufacturing rules from original system
                         if (m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL or 
                             m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL):
+                            debug_counters['edge_too_thin'] += 1
+                            if debug and debug_counters['edge_too_thin'] <= 3:
+                                st.warning(f"🔍 Edge too thin: outer={m_o.get('thickness_mm', 0):.1f}mm, inner={m_i.get('thickness_mm', 0):.1f}mm (min: {MIN_EDGE_NOMINAL}mm)")
                             continue
                             
                         if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
+                            debug_counters['thickness_mismatch'] += 1
+                            if debug and debug_counters['thickness_mismatch'] <= 3:
+                                st.warning(f"🔍 Thickness mismatch: outer={m_o['thickness_mm']:.1f}mm vs inner={m_i['thickness_mm']:.1f}mm (tolerance: {TOL}mm)")
                             continue
                             
                         if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
+                            debug_counters['manufacturer_mismatch'] += 1
+                            if debug and debug_counters['manufacturer_mismatch'] <= 3:
+                                st.warning(f"🔍 Manufacturer mismatch: outer='{m_o['manufacturer']}' vs inner='{m_i['manufacturer']}'")
                             continue
                             
                         # Center must be thin
                         if m_c.get("thickness_mm", 0) > 1.1 + TOL:
+                            debug_counters['center_too_thick'] += 1
+                            if debug and debug_counters['center_too_thick'] <= 3:
+                                st.warning(f"🔍 Center too thick: {m_c.get('thickness_mm', 0):.1f}mm > {1.1 + TOL}mm")
                             continue
                         
                         # Calculate air gap from OA and real thicknesses
@@ -346,6 +379,9 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
                         
                         # Validate air gap
                         if air_gap < MIN_AIRGAP:
+                            debug_counters['air_gap_too_small'] += 1
+                            if debug and debug_counters['air_gap_too_small'] <= 3:
+                                st.warning(f"🔍 Air gap too small: {air_gap:.1f}mm < {MIN_AIRGAP}mm (OA={oa_size}\", thicknesses={[round(t,1) for t in glass_thicknesses]}mm)")
                             continue
                         
                         # Coating conflict validation
@@ -355,6 +391,9 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
                             {'meta': m_i, 'nfrc_id': inner_id}
                         ]
                         if not validate_coating_conflicts(glass_configs):
+                            debug_counters['coating_conflicts'] += 1
+                            if debug and debug_counters['coating_conflicts'] <= 3:
+                                st.warning(f"🔍 Coating conflict detected")
                             continue
                         
                         config = {
@@ -371,7 +410,12 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
                         # Final rule validation
                         errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
                         if not errors:
+                            debug_counters['valid_configs'] += 1
                             valid_configs.append(config)
+                        else:
+                            debug_counters['rule_validation_failed'] += 1
+                            if debug and debug_counters['rule_validation_failed'] <= 3:
+                                st.warning(f"🔍 Rule validation failed: {errors[0] if errors else 'Unknown error'}")
                             
                         # Update progress
                         if len(valid_configs) % 50 == 0:
@@ -465,7 +509,18 @@ def generate_configurations_with_physics(catalog_df, current_rules, max_configs=
     
     generation_progress.empty()
     
-    return valid_configs, attempts
+    # Show debug summary
+    if debug:
+        st.subheader("🔍 Generation Debug Summary")
+        st.write("**Failure Reasons:**")
+        for reason, count in debug_counters.items():
+            if count > 0 and reason != 'valid_configs':
+                st.write(f"- {reason.replace('_', ' ').title()}: {count:,}")
+        
+        if debug_counters['valid_configs'] > 0:
+            st.success(f"✅ Successfully generated {debug_counters['valid_configs']:,} valid configurations!")
+    
+    return valid_configs, attempts, debug_counters
 
 def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
     """Calculate air gap thickness from OA and glass thicknesses - PROPER VERSION"""
@@ -1449,11 +1504,12 @@ elif current_step == 3:
     
     config_file = "igu_simulation_input_table.csv"
     
-    col1, col2, col3 = st.columns(3)
+    st.subheader("🧪 Physics-Based Configuration Generator")
+    st.success("**Uses real IGSDB data & proper manufacturing physics**")
+    
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.subheader("🧪 Physics-Based Generator")
-        st.success("**Recommended** - Uses real IGSDB data & proper physics")
         
         if st.button("🧪 Generate with Real Physics", type="primary"):
             with st.spinner("Generating configurations with real physics..."):
@@ -1461,7 +1517,7 @@ elif current_step == 3:
                 current_rules = load_generation_rules()
                 
                 try:
-                    valid_configs, attempts = generate_configurations_with_physics(
+                    valid_configs, attempts, debug_counters = generate_configurations_with_physics(
                         catalog_df, current_rules, max_configs=2000
                     )
                     
@@ -1481,12 +1537,22 @@ elif current_step == 3:
                     st.error(f"❌ Generation failed: {e}")
     
     with col2:
-        st.subheader("⚡ Fast Generate")
-        st.info("Limited configurations for quick testing")
+        st.subheader("ℹ️ Generation Info")
+        st.info("**How it works:**")
+        st.write("• Fetches real thickness data from IGSDB")  
+        st.write("• Calculates air gaps from OA + glass thickness")
+        st.write("• Applies manufacturing constraints")
+        st.write("• Validates coating placement rules")
+        st.write("• Filters by your generation rules")
         
-        if st.button("⚡ Run Fast Generator", type="primary"):
-            with st.spinner("Running fast generator..."):
-                progress_bar = st.progress(0)
+        st.info("**Constraints:**")
+        st.write(f"• Edge glass ≥ {MIN_EDGE_NOMINAL}mm thick")
+        st.write(f"• Center glass ≤ 1.1mm thick") 
+        st.write(f"• Air gap ≥ {MIN_AIRGAP}mm")
+        st.write(f"• Thickness tolerance: ±{TOL}mm")
+        
+    # Show existing configurations
+    try:
                 for i in range(100):
                     time.sleep(0.01)
                     progress_bar.progress(i + 1)
