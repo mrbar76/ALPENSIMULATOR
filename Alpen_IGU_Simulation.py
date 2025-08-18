@@ -112,7 +112,49 @@ def build_gaps(gas, ag_mm, igu_type):
 
 def get_layer(nfrc_id):
     raw = layer_cache.get(int(nfrc_id)) if pd.notna(nfrc_id) else None
-    return pywincalc.parse_json(raw) if raw else None
+    if not raw:
+        return None
+    
+    # Handle both JSON strings and dictionary formats from cache
+    if isinstance(raw, str):
+        return pywincalc.parse_json(raw)
+    elif isinstance(raw, dict):
+        # Cache contains metadata dict, need to fetch actual layer data
+        print(f"⚠️ Cache contains metadata dict for NFRC {nfrc_id}, fetching layer data...")
+        return fetch_layer_from_igsdb(int(nfrc_id))
+    else:
+        return None
+
+def fetch_layer_from_igsdb(nfrc_id: int):
+    """Fetch layer data directly from IGSDB for simulation"""
+    try:
+        # Get product ID
+        url = f"https://igsdb.lbl.gov/api/v1/products?type=glazing&nfrc_id={nfrc_id}"
+        headers = {"accept": "application/json", "Authorization": "Token 0e94db9c8cda032d3eaa083e21984350c17633ca"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if not resp.ok:
+            return None
+        data = resp.json()
+        if not data:
+            return None
+        
+        product_id = data[0].get("product_id")
+        if not product_id:
+            return None
+        
+        # Get full product data for simulation
+        resp = requests.get(f"https://igsdb.lbl.gov/api/v1/products/{product_id}/", 
+                          headers=headers, 
+                          timeout=10)
+        if not resp.ok:
+            return None
+        
+        # Parse as JSON layer for pywincalc
+        return pywincalc.parse_json(resp.text)
+        
+    except Exception as e:
+        print(f"⚠️ Error fetching layer data for NFRC {nfrc_id}: {e}")
+        return None
 
 
 def extract_info(nfrc_id, _):
@@ -122,23 +164,37 @@ def extract_info(nfrc_id, _):
     raw = layer_cache.get(int(nfrc_id))
     if not raw:
         return ("Unknown", "none", None, None, "")
-    data = json.loads(raw)
-    # manufacturer & coating
-    mfr = data.get('manufacturer_name') or data.get('manufacturer', {}).get('name', 'Unknown')
-    coat = data.get('coating_name') or 'none'
-    # actual thickness
-    md = data.get('measured_data', {})
-    if md.get('thickness') is not None:
-        actu = round(float(md['thickness']), 1)
+    
+    # Handle both JSON strings and dictionary formats
+    if isinstance(raw, str):
+        data = json.loads(raw)
+    elif isinstance(raw, dict):
+        # Use the metadata dict directly (from new cache format)
+        data = raw
     else:
-        actu = round(float(data.get('thickness', 0)) * 25.4, 1)
+        return ("Unknown", "none", None, None, "")
+    
+    # manufacturer & coating
+    mfr = data.get('manufacturer', 'Unknown')
+    coat = data.get('coating_name', 'none')
+    
+    # actual thickness
+    actu = data.get('thickness_mm')
+    if actu is None:
+        # Fallback for old format
+        md = data.get('measured_data', {})
+        if md.get('thickness') is not None:
+            actu = round(float(md['thickness']), 1)
+        else:
+            actu = round(float(data.get('thickness', 0)) * 25.4, 1)
+    
     # nominal = nearest whole mm
     nominal = int(round(actu)) if actu is not None else None
     # label segment
     seg = f"{mfr} {coat if coat!='none' else ''} {actu:.1f}mm".replace('  ', ' ').strip()
     return (mfr, coat, actu, nominal, seg)
 
-# --- build_gaps ---(gas, ag_mm, igu_type):
+def build_gaps(gas, ag_mm, igu_type):
     """Build gap layers based on gas and IGU type"""
     g = str(gas).upper()
     if '95A' in g:
