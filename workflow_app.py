@@ -137,7 +137,7 @@ elif current_step == 2:
     **📏 Standard Specifications:**
     • OA sizes: 0.88", 1.0", 1.25"
     • Gas types: 90K, 95A argon fills
-    • Spacer thickness: 6-20mm range
+    • Spacer thickness: 6mm minimum, 20mm maximum
     • Surface coatings: Proper placement validation
     """)
     
@@ -153,7 +153,7 @@ elif current_step == 2:
         st.metric("Thickness Tolerance", "±0.3mm", help="Outer/inner matching")
     with col3:
         st.metric("Min Air Gap", "3.0mm", help="Performance minimum")
-        st.metric("Quad OA Minimum", "0.75\"", help="Structural requirement")
+        st.metric("Spacer Range", "6-20mm", help="Manufacturing limits")
     
     # Configuration file status
     st.subheader("🗂️ Configuration Files")
