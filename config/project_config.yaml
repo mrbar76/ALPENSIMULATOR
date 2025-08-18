@@ -1,0 +1,64 @@
+# Project-Specific Configuration Override
+# This file overrides system defaults for specific project requirements
+
+# Project Information
+project:
+  name: "Alpen IGU Optimization"
+  description: "High-performance window optimization for building energy efficiency"
+  climate_zone: "mixed"  # hot, mixed, cold
+  building_type: "residential"  # residential, commercial, institutional
+
+# Project-Specific Performance Targets (overrides system defaults)
+performance_targets:
+  u_value:
+    target: 0.18           # Project target slightly more aggressive than defaults
+    maximum: 0.25          # Project maximum more strict
+  
+  shgc:
+    target: 0.30           # Balanced for mixed climate
+    range:
+      min: 0.25
+      max: 0.40
+  
+  vt:
+    minimum: 0.45          # Higher daylight requirement
+    preferred: 0.55
+
+# Project-Specific Glass Selection
+glass_selection:
+  manufacturers:
+    preferred: 
+      - "Guardian"         # Primary supplier relationship
+      - "Pilkington"       # Secondary supplier  
+    excluded:
+      - "Generic"
+      - "Unknown"
+  
+  coating_preferences:
+    required_coatings:
+      - "LoE-180"
+      - "LoE-270"
+      - "LoE3-366"
+
+# Project Optimization Weights (overrides defaults)
+optimization:
+  default_weights:
+    u_value: 0.45          # Higher emphasis on thermal performance  
+    shgc: 0.25             # Moderate solar control importance
+    vt: 0.25               # Maintain good daylight
+    cost: 0.05             # Cost consideration
+
+  constraints:
+    max_results: 25        # Smaller result set for focused analysis
+    min_score_threshold: 0.70  # Higher quality threshold
+
+# Project-Specific IGU Design Constraints
+igu_design:
+  preferred_type: "Triple" # Focus on triple-pane for this project
+  
+  airspace:
+    preferred_inches: [0.625, 0.75]  # Optimize for these sizes
+    
+  gas_fills:
+    preferred: "95A"       # Default to argon fill
+    allow_air: false       # No air-filled units for this project

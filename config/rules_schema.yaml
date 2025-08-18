@@ -1,0 +1,123 @@
+# JSON Schema for validating rule configurations
+# This schema ensures configuration files are valid
+
+type: object
+properties:
+  igsdb:
+    type: object
+    properties:
+      base_url:
+        type: string
+        format: uri
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 300
+      max_retries:
+        type: integer
+        minimum: 0
+        maximum: 10
+      cache_duration_hours:
+        type: integer
+        minimum: 1
+        maximum: 168
+    required: [base_url, timeout_seconds]
+
+  glass_selection:
+    type: object
+    properties:
+      manufacturers:
+        type: object
+        properties:
+          preferred:
+            type: array
+            items:
+              type: string
+          excluded:
+            type: array
+            items:
+              type: string
+          allow_mixed:
+            type: boolean
+      thickness_constraints:
+        type: object
+        properties:
+          min_mm:
+            type: number
+            minimum: 1.0
+          max_mm:
+            type: number
+            maximum: 20.0
+          preferred_nominal:
+            type: array
+            items:
+              type: integer
+              minimum: 3
+              maximum: 15
+
+  performance_targets:
+    type: object
+    properties:
+      u_value:
+        type: object
+        properties:
+          units:
+            type: string
+            enum: ["Btu/hr.ft2.F", "W/m2.K"]
+          excellent:
+            type: number
+            minimum: 0.1
+          maximum:
+            type: number
+            maximum: 1.0
+      shgc:
+        type: object
+        properties:
+          default_range:
+            type: object
+            properties:
+              min:
+                type: number
+                minimum: 0.1
+                maximum: 1.0
+              max:
+                type: number
+                minimum: 0.1
+                maximum: 1.0
+      vt:
+        type: object
+        properties:
+          minimum:
+            type: number
+            minimum: 0.1
+            maximum: 1.0
+          maximum:
+            type: number
+            minimum: 0.1
+            maximum: 1.0
+
+  optimization:
+    type: object
+    properties:
+      default_weights:
+        type: object
+        properties:
+          u_value:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+          shgc:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+          vt:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+          cost:
+            type: number
+            minimum: 0.0
+            maximum: 1.0
+        additionalProperties: false
+
+required: [performance_targets, optimization]

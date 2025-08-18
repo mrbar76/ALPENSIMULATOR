@@ -1,0 +1,327 @@
+airspace_rules:
+  minimum_requirements:
+    quad: 3.0
+    triple: 3.0
+  outer_airspace:
+    calculation_method: oa_mm - sum(glass_thicknesses) / gap_count
+    min_mm: 3.0
+coating_rules:
+  center_coating_surfaces:
+    description: Surfaces for center glass coatings
+    quad:
+    - 6
+    triple:
+    - 4
+  special_coating_rules:
+    i89_coating:
+      coating_side_requirement: back
+      description: i89 must be on innermost surface facing room
+      quad_surface: 8
+      triple_surface: 6
+    nxlite_coating:
+      coating_side_requirement: back
+      description: NxLite coatings on center surfaces
+      quad_surface: 6
+      triple_surface: 4
+  standard_lowe_surfaces:
+    description: Protected surfaces for standard low-E coatings
+    quad:
+    - 2
+    - 7
+    triple:
+    - 2
+    - 5
+  surface_definitions:
+    quad:
+      glass_1_inside: 2
+      glass_2_inside: 4
+      glass_2_outside: 3
+      glass_3_inside: 6
+      glass_3_outside: 5
+      glass_4_inside: 8
+      glass_4_outside: 7
+      outside_air: 1
+    triple:
+      glass_1_inside: 2
+      glass_2_inside: 4
+      glass_2_outside: 3
+      glass_3_inside: 6
+      glass_3_outside: 5
+      outside_air: 1
+constants:
+  CENTER_MAX_THICKNESS: 1.4000000000000004
+  MIN_AIRGAP: 1.0
+  MIN_EDGE_NOMINAL: 3.0
+  QUAD_OA_MIN_INCH: 1.0
+  TOL: 0.30000000000000004
+file_processing:
+  deduplication:
+    enabled: true
+    subset_columns:
+    - IGU Type
+    - OA (in)
+    - Gas Type
+    - Glass 1 NFRC ID
+    - Glass 2 NFRC ID
+    - Glass 3 NFRC ID
+    - Glass 4 NFRC ID
+  input_files:
+    gas_types: input_gas_types.csv
+    glass_center: input_glass_catalog_center.csv
+    glass_inner_outer: input_glass_catalog_inner_outer.csv
+    oa_sizes: input_oa_sizes.csv
+  output_files:
+    configuration_table: igu_simulation_input_table.csv
+    results_pattern: igu_simulation_results_{timestamp}.csv
+flipping_rules:
+  description: Rules for determining when to flip glass orientation
+  flip_logic:
+    center:
+      flip_if_coating_side: front
+      keep_if_coating_side: back
+      target_surface: 4
+    inner:
+      flip_if_coating_side: back
+      keep_if_coating_side: front
+      quad_target_surface: 7
+      triple_target_surface: 5
+    outer:
+      flip_if_coating_side: front
+      keep_if_coating_side: back
+      target_surface: 2
+    quad_inner:
+      flip_if_coating_side: front
+      keep_if_coating_side: back
+      target_surface: 4
+  special_flip_rules:
+    i89_coating:
+      description: i89 must end up on innermost surface (6 for triple, 8 for quad)
+      quad:
+        flip_if_coating_side: front
+        keep_if_coating_side: back
+        target_surface: 8
+      triple:
+        flip_if_coating_side: front
+        keep_if_coating_side: back
+        target_surface: 6
+gas_fill_rules:
+  gap_count_by_igu_type:
+    quad: 3
+    triple: 2
+  supported_gases:
+    90K:
+      cost_factor: 1.35
+      description: 90% Krypton, 10% Air
+      gas_type: KRYPTON
+      krypton_percentage: 0.9
+      thermal_conductivity: 0.009
+    95A:
+      argon_percentage: 0.95
+      cost_factor: 1.1
+      description: 95% Argon, 5% Air
+      gas_type: ARGON
+      thermal_conductivity: 0.016
+    Air:
+      air_percentage: 1.0
+      cost_factor: 1.0
+      description: Standard air fill
+      gas_type: AIR
+      thermal_conductivity: 0.024
+glass_rules:
+  center_glass:
+    max_thickness_mm: 1.1
+    position_names:
+      quad:
+      - quad_inner
+      - center
+      triple:
+      - center
+    quad_special_rules:
+      quad_inner_uncoated_if_center_coated: false
+    tolerance_mm: 0.3
+  edge_glass:
+    manufacturer_matching_required: true
+    min_thickness_mm: 3.0
+    position_names:
+      quad:
+      - outer
+      - inner
+      triple:
+      - outer
+      - inner
+igsdb_rules:
+  cache_file: igsdb_layer_cache.pkl
+  metadata_extraction:
+    fallback_thickness_source: optical_data.thickness_mm
+    required_fields:
+    - manufacturer_name
+    - coating_name
+    - thickness
+    thickness_source: measured_data.thickness
+  nfrc_id_validation:
+    description: Validate NFRC IDs exist in IGSDB
+    enabled: true
+igu_types:
+  quad:
+    airspace_positions:
+    - outer
+    - center
+    - inner
+    gap_count: 3
+    glass_count: 4
+    glass_positions:
+    - 1
+    - 2
+    - 3
+    - 4
+    name: Quad-Pane
+    surface_count: 8
+    surface_numbers:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    validation_rules:
+    - all_required_glasses_present:
+      - 1
+      - 2
+      - 3
+      - 4
+    - oa_minimum_required: true
+  triple:
+    airspace_positions:
+    - outer
+    - inner
+    gap_count: 2
+    glass_count: 3
+    glass_positions:
+    - 1
+    - 2
+    - 3
+    name: Triple-Pane
+    surface_count: 6
+    surface_numbers:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    validation_rules:
+    - glass_4_must_be_empty: true
+    - all_required_glasses_present:
+      - 1
+      - 2
+      - 3
+    - no_oa_minimum: true
+lowe_ordering:
+  description: parse_lowe_value(outer) >= parse_lowe_value(inner)
+  enabled: true
+  rule: outer_lowe_value >= inner_lowe_value
+manufacturer_rules:
+  center_flexibility:
+    applies_to:
+    - center
+    - quad_inner
+    description: Center glass can be different manufacturer
+    enabled: true
+  edge_matching:
+    applies_to:
+    - outer
+    - inner
+    description: Outer and inner glass must be same manufacturer
+    enabled: true
+modification_history:
+- author: system
+  changes: Made all hardcoded constants configurable
+  date: '2025-08-14'
+  description: Initial extraction from igu_input_generator.py and Alpen_IGU_Simulation.py
+  version: 1.0.0
+- author: user_correction
+  changes: 'Fixed i89_coating.triple_surface: 6, i89_coating.quad_surface: 8'
+  date: '2025-08-14'
+  description: Corrected i89 coating placement - surface 6 (triple) and 8 (quad)
+  version: 1.0.1
+- author: user
+  date: '2025-08-14T17:19:10.125432'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:19:17.112530'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:19:48.330916'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:19:52.292991'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:19:53.528700'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:21:12.216781'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:21:41.943236'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-14T17:21:41.955265'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T12:24:23.283733'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T12:24:37.600835'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T12:24:46.150915'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T12:24:48.208241'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T12:25:04.966323'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T13:12:13.363460'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T13:12:20.893490'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-15T13:13:36.223301'
+  description: Rule updated via configuration system
+- author: user
+  date: '2025-08-17T22:50:23.157929'
+  description: Rule updated via configuration system
+quality_control:
+  coating_conflict_validation:
+    description: No two low-e coatings on same glass lite
+    enabled: true
+  manufacturer_compatibility:
+    description: Check manufacturer compatibility matrices
+    enabled: true
+  thickness_tolerance_check:
+    description: Measured vs nominal thickness within tolerance
+    enabled: true
+    tolerance_mm: 0.3
+surface_validation:
+  quad_surface_map:
+    1: outside_air
+    2: glass_1_inside
+    3: glass_2_outside
+    4: glass_2_inside
+    5: glass_3_outside
+    6: glass_3_inside
+    7: glass_4_outside
+    8: glass_4_inside
+  triple_surface_map:
+    1: outside_air
+    2: glass_1_inside
+    3: glass_2_outside
+    4: glass_2_inside
+    5: glass_3_outside
+    6: glass_3_inside

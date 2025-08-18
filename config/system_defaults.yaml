@@ -1,0 +1,157 @@
+# Alpen IGU Simulator - System Default Configuration
+# This file contains the base configuration for the system
+
+# IGSDB API Configuration
+igsdb:
+  base_url: "https://igsdb.lbl.gov/api/v1"
+  timeout_seconds: 30
+  max_retries: 3
+  cache_duration_hours: 24
+
+# Glass Selection Rules
+glass_selection:
+  manufacturers:
+    preferred: 
+      - "Guardian"
+      - "Pilkington" 
+      - "Cardinal"
+      - "Vitro"
+    excluded:
+      - "Generic"
+    allow_mixed: true
+  
+  thickness_constraints:
+    min_mm: 3.0
+    max_mm: 12.0
+    preferred_nominal: [4, 5, 6, 8, 10]
+  
+  coating_preferences:
+    low_e_required: false
+    preferred_coatings:
+      - "LoE-180"
+      - "LoE-270" 
+      - "LoE3-366"
+      - "i89"
+
+# Performance Targets and Thresholds
+performance_targets:
+  u_value:
+    units: "Btu/hr.ft2.F"
+    excellent: 0.15    # Passive House level
+    very_good: 0.20
+    good: 0.25
+    maximum: 0.35      # Code minimum
+  
+  shgc:
+    climate_zones:
+      hot:
+        max: 0.25        # Low solar gain for cooling
+        preferred: 0.20
+      mixed:
+        min: 0.25
+        max: 0.40
+        preferred: 0.30
+      cold:
+        min: 0.35        # Higher solar gain for heating
+        preferred: 0.45
+    
+    default_range:
+      min: 0.20
+      max: 0.60
+  
+  vt:
+    minimum: 0.35        # Maintain adequate daylight
+    preferred: 0.50
+    excellent: 0.70
+    maximum: 0.85
+
+# IGU Configuration Rules  
+igu_design:
+  supported_types: ["Triple", "Quad"]
+  default_type: "Triple"
+  
+  airspace:
+    min_inches: 0.375    # 9.5mm
+    max_inches: 1.0      # 25.4mm
+    preferred_inches: [0.5, 0.625, 0.75, 0.875]  # Common sizes
+    
+  gas_fills:
+    supported:
+      - "Air"
+      - "95A"          # 95% Argon
+      - "90K"          # 90% Krypton
+    default: "95A"
+    cost_factors:
+      Air: 1.0
+      "95A": 1.1
+      "90K": 1.3
+
+# Optimization Rules
+optimization:
+  default_weights:
+    u_value: 0.40        # Thermal performance
+    shgc: 0.30           # Solar control  
+    vt: 0.25             # Daylight access
+    cost: 0.05           # Economic factor
+  
+  constraints:
+    max_results: 50
+    min_score_threshold: 0.60
+    diversity_factor: 0.1  # Promote solution diversity
+  
+  objectives:
+    primary: "u_value"     # Primary optimization target
+    secondary: ["shgc", "vt"]
+    minimize: ["u_value"]
+    maximize: ["shgc", "vt"]
+
+# Simulation Settings
+simulation:
+  environments:
+    use_nfrc_standard: true
+    custom_conditions:
+      winter:
+        interior_temp_c: 21
+        exterior_temp_c: -18
+      summer:
+        interior_temp_c: 24  
+        exterior_temp_c: 32
+  
+  calculation_precision:
+    decimal_places: 4
+    convergence_tolerance: 1e-6
+  
+  batch_processing:
+    max_batch_size: 1000
+    progress_update_interval: 50
+    error_tolerance: 0.05  # 5% failures allowed
+
+# Data Management
+data_management:
+  database:
+    backup_frequency_hours: 24
+    cleanup_old_runs_days: 90
+    vacuum_frequency_days: 7
+  
+  caching:
+    igsdb_cache_mb: 500
+    results_cache_mb: 200
+    auto_cleanup: true
+  
+  export_formats:
+    supported: ["CSV", "JSON", "Excel"]
+    default: "CSV"
+    include_metadata: true
+
+# Logging and Monitoring
+logging:
+  level: "INFO"
+  file_rotation: true
+  max_file_size_mb: 10
+  backup_count: 5
+  
+  categories:
+    database: true
+    simulation: true
+    optimization: true
+    api_calls: true

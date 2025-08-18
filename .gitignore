@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+.env
+pywincalc-clean-env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+*.pkl
+*.log
+*simulation_results_*.csv
+test_simulation_results_*.csv
+
+# Large data files
+XML/
+IGSDB Files/
+LBNL*/
+*.csv
+!input_*.csv
+!unified_glass_catalog.csv
+
+# Temporary files
+~$*
+*.tmp
+*.temp
+
+# Documentation that might be large
+Documentation/
+docs/
+
+# Legacy and backup files
+legacy/
+*_backup.py
+alpen_advisor_*.py
+*_v*.py

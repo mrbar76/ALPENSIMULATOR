@@ -1,0 +1,344 @@
+# =====================================================================
+# ALPEN IGU CONFIGURATION RULES
+# =====================================================================
+# Comprehensive, editable rules for IGU (Insulated Glass Unit) validation
+# These rules control what IGU configurations are considered valid
+# and how they should be filtered and optimized.
+#
+# Edit this file to customize IGU validation behavior.
+# Changes take effect immediately when the system reloads.
+# =====================================================================
+
+# IGU Type Definitions
+# ====================
+igu_types:
+  triple:
+    name: "Triple-Pane"
+    description: "Three glass layers with two airspaces"
+    glass_layer_count: 3
+    airspace_count: 2
+    glass_layers:
+      - position: 1
+        name: "Exterior Glass"
+        required: true
+        description: "Outermost glass layer facing outside"
+      - position: 2  
+        name: "Middle Glass"
+        required: true
+        description: "Center glass layer"
+      - position: 3
+        name: "Interior Glass" 
+        required: true
+        description: "Innermost glass layer facing inside"
+      - position: 4
+        name: "Fourth Glass"
+        required: false
+        description: "Not used in triple-pane configurations"
+        validation: "must_be_null"
+    
+    airspaces:
+      - position: "outer"
+        name: "Exterior Airspace"
+        description: "Space between exterior and middle glass"
+        required: true
+      - position: "inner"
+        name: "Interior Airspace"  
+        description: "Space between middle and interior glass"
+        required: true
+    
+    validation_rules:
+      - rule: "exactly_3_glass_layers"
+        description: "Must have exactly 3 glass layers defined"
+        error_message: "Triple-pane requires exactly 3 glass layers, found {found_count}"
+      - rule: "no_glass_4"
+        description: "Fourth glass position must be empty/null"
+        error_message: "Triple-pane cannot have glass in position 4"
+      - rule: "all_required_layers_present"
+        description: "Glass positions 1, 2, and 3 must be defined"
+        error_message: "Missing required glass layer in position {missing_position}"
+
+  quad:
+    name: "Quad-Pane"
+    description: "Four glass layers with three airspaces"
+    glass_layer_count: 4
+    airspace_count: 3
+    glass_layers:
+      - position: 1
+        name: "Exterior Glass"
+        required: true
+        description: "Outermost glass layer facing outside"
+      - position: 2
+        name: "Exterior Middle Glass"
+        required: true  
+        description: "Second glass layer from outside"
+      - position: 3
+        name: "Interior Middle Glass"
+        required: true
+        description: "Third glass layer from outside"
+      - position: 4
+        name: "Interior Glass"
+        required: true
+        description: "Innermost glass layer facing inside"
+    
+    airspaces:
+      - position: "outer"
+        name: "Exterior Airspace"
+        description: "Space between glass 1 and 2"
+        required: true
+      - position: "middle"
+        name: "Middle Airspace"
+        description: "Space between glass 2 and 3" 
+        required: true
+      - position: "inner"
+        name: "Interior Airspace"
+        description: "Space between glass 3 and 4"
+        required: true
+    
+    validation_rules:
+      - rule: "exactly_4_glass_layers"
+        description: "Must have exactly 4 glass layers defined"
+        error_message: "Quad-pane requires exactly 4 glass layers, found {found_count}"
+      - rule: "all_required_layers_present"
+        description: "Glass positions 1, 2, 3, and 4 must be defined"
+        error_message: "Missing required glass layer in position {missing_position}"
+
+# Airspace Constraints
+# ====================
+airspace_rules:
+  outer_airspace:
+    description: "Rules for outer airspace dimensions"
+    
+    constraints:
+      minimum_inches: 0.375
+      maximum_inches: 2.0
+      preferred_inches: [0.5, 0.625, 0.75, 0.875, 1.0]
+      
+    validation_rules:
+      - rule: "within_size_limits"
+        description: "Airspace must be within structural limits"
+        error_message: "Outer airspace {value}in is outside range {min_inches}-{max_inches}in"
+      - rule: "practical_thickness"
+        description: "Airspace should be practical for manufacturing"
+        warning_message: "Airspace {value}in is unusual, consider preferred sizes: {preferred_list}"
+        
+    engineering_notes: |
+      - Minimum 0.375" required for structural integrity
+      - Maximum 2.0" to prevent excessive convection
+      - Standard increments of 0.125" preferred for manufacturing
+      - Larger airspaces improve thermal performance but increase cost
+
+  inner_airspace:
+    description: "Rules for inner airspace (quad-pane only)"
+    
+    constraints:
+      minimum_inches: 0.375
+      maximum_inches: 1.0
+      preferred_inches: [0.5, 0.625, 0.75]
+      
+    validation_rules:
+      - rule: "within_size_limits"
+        description: "Inner airspace must be within structural limits"
+        error_message: "Inner airspace {value}in is outside range {min_inches}-{max_inches}in"
+
+# Gas Fill Rules
+# ==============
+gas_fill_rules:
+  description: "Rules for gas fills in airspaces"
+  
+  supported_gases:
+    Air:
+      name: "Air"
+      description: "Standard air fill (78% N2, 21% O2)"
+      thermal_conductivity: 0.024  # W/m·K at 20°C
+      cost_factor: 1.0
+      availability: "universal"
+      notes: "Baseline option, lowest cost, adequate performance"
+      
+    "95A":
+      name: "95% Argon"
+      description: "95% Argon, 5% Air mixture"
+      thermal_conductivity: 0.016  # W/m·K at 20°C
+      cost_factor: 1.1
+      availability: "standard"
+      notes: "Most common upgrade, good thermal improvement"
+      
+    "90K":
+      name: "90% Krypton"
+      description: "90% Krypton, 10% Air mixture"
+      thermal_conductivity: 0.009  # W/m·K at 20°C
+      cost_factor: 1.35
+      availability: "premium"
+      notes: "Best thermal performance, highest cost"
+
+  validation_rules:
+    - rule: "supported_gas_type"
+      description: "Gas type must be from supported list"
+      error_message: "Unsupported gas type '{gas_type}', supported: {supported_list}"
+    - rule: "consistent_gas_fill"
+      description: "All airspaces should use same gas (unless mixed specified)"
+      warning_message: "Mixed gas fills detected, verify this is intentional"
+
+  mixing_rules:
+    allow_mixed_gases: false
+    description: "Whether different gases can be used in different airspaces"
+    notes: "Mixed gas fills are technically possible but rarely used due to complexity"
+
+# Glass Layer Rules  
+# =================
+glass_layer_rules:
+  description: "Rules for glass selection and combinations"
+  
+  manufacturer_rules:
+    preferred_manufacturers:
+      - "Cardinal Glass Industries"
+      - "Guardian Glass"
+      - "Pilkington"
+    
+    excluded_manufacturers: []
+    
+    allow_mixed_manufacturers:
+      enabled: true
+      description: "Allow different manufacturers in same IGU"
+      warning_threshold: 2
+      warning_message: "Using {count} different manufacturers may affect warranty"
+      
+    validation_rules:
+      - rule: "manufacturer_compatibility"
+        description: "Check manufacturer compatibility matrices"
+        warning_message: "Manufacturers {mfr_list} may have compatibility issues"
+
+  thickness_rules:
+    minimum_mm: 3.0
+    maximum_mm: 12.0
+    preferred_nominal: [4, 5, 6, 8, 10]
+    
+    validation_rules:
+      - rule: "within_thickness_range"
+        description: "Glass thickness must be within structural limits"
+        error_message: "Glass thickness {thickness}mm outside range {min_mm}-{max_mm}mm"
+      - rule: "standard_thickness"
+        description: "Prefer standard nominal thicknesses"
+        warning_message: "Thickness {thickness}mm is non-standard, consider: {preferred_list}mm"
+
+  coating_rules:
+    description: "Rules for low-E coatings and surface positions"
+    
+    surface_positions:
+      description: "Standard surface numbering (1=outside, 6=inside for triple)"
+      triple_surfaces: [1, 2, 3, 4, 5, 6]
+      quad_surfaces: [1, 2, 3, 4, 5, 6, 7, 8]
+      
+    coating_placement:
+      preferred_surfaces:
+        triple: [2, 5]  # Surface 2 (glass 1 inside) and 5 (glass 3 outside)
+        quad: [2, 5, 7]  # Surface 2, 5, and 7
+        
+      validation_rules:
+        - rule: "coating_surface_position"
+          description: "Coatings should be on protected internal surfaces"
+          warning_message: "Coating on surface {surface} may be exposed to weather"
+
+# Symmetry and Design Rules
+# =========================
+design_pattern_rules:
+  description: "Rules for glass arrangement patterns"
+  
+  symmetry_preferences:
+    prefer_symmetric: true
+    description: "Prefer symmetric glass arrangements for thermal performance"
+    
+    symmetric_patterns:
+      triple:
+        - pattern: "ABA"
+          description: "Same glass exterior/interior, different center"
+          example: "Clear-LoE-Clear"
+        - pattern: "AAA" 
+          description: "All identical glass"
+          example: "Clear-Clear-Clear"
+          
+      quad:
+        - pattern: "ABBA"
+          description: "Symmetric about center"
+          example: "Clear-LoE-LoE-Clear"
+        - pattern: "AAAA"
+          description: "All identical glass"
+          example: "Clear-Clear-Clear-Clear"
+    
+    validation_rules:
+      - rule: "recommend_symmetry"
+        description: "Symmetric designs often perform better"
+        info_message: "Consider symmetric pattern for improved thermal performance"
+
+# Performance Validation Rules
+# ============================
+performance_validation:
+  description: "Rules for validating expected performance characteristics"
+  
+  u_value_expectations:
+    triple:
+      excellent: 0.20
+      good: 0.25
+      maximum: 0.35
+    quad:
+      excellent: 0.15
+      good: 0.20  
+      maximum: 0.30
+      
+  shgc_expectations:
+    minimum: 0.15
+    maximum: 0.70
+    typical_range: [0.25, 0.55]
+    
+  vt_expectations:
+    minimum: 0.20
+    maximum: 0.85
+    preferred_minimum: 0.35
+
+# Success Pattern Analysis
+# ========================
+success_patterns:
+  description: "Known successful IGU configurations based on simulation history"
+  
+  proven_triple_winners:
+    description: "The 'Golden 20' triple configurations that consistently succeed"
+    requirements:
+      glass_type: "NFRC 102"
+      manufacturer: "Cardinal Glass Industries"
+      coating: "LoE-180"
+      pattern: "symmetric"
+      gas_fills: ["95A", "90K"]
+      airspace_range: [1.38, 2.0]
+      
+  high_performance_quads:
+    description: "Quad configurations with excellent thermal performance"
+    criteria:
+      u_value_max: 0.15
+      vt_minimum: 0.35
+      preferred_manufacturers: ["Cardinal Glass Industries", "Guardian Glass"]
+
+# Rule Engine Configuration
+# =========================
+rule_engine_settings:
+  validation_mode: "strict"  # strict, permissive, warning_only
+  
+  error_handling:
+    stop_on_first_error: false
+    collect_all_issues: true
+    provide_suggestions: true
+    
+  reporting:
+    verbosity: "detailed"  # minimal, standard, detailed, debug
+    include_success_patterns: true
+    include_performance_predictions: true
+    
+  caching:
+    cache_validation_results: true
+    cache_duration_minutes: 30
+
+# Rule Modification History
+# =========================
+modification_history:
+  - date: "2025-08-14"
+    author: "system"
+    description: "Initial comprehensive rule definition"
+    version: "1.0.0"

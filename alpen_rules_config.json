@@ -1,0 +1,26 @@
+{
+  "rule_parameters": {
+    "TOL": 0.3,
+    "MIN_EDGE_NOMINAL": 3.0,
+    "MIN_AIRGAP": 1.0,
+    "QUAD_OA_MIN_INCH": 0.75,
+    "center_max_thickness": 1.1
+  },
+  "manufacturer_rules": {
+    "require_edge_match": true,
+    "allow_center_different": true
+  },
+  "coating_rules": {
+    "triple_lowe_surfaces": [
+      2,
+      5
+    ],
+    "quad_lowe_surfaces": [
+      2,
+      7
+    ],
+    "center_coating_surface": 4,
+    "i89_surface_triple": 5,
+    "i89_surface_quad": 7
+  }
+}
