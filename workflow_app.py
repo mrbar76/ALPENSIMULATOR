@@ -262,6 +262,211 @@ def validate_coating_conflicts(glass_configs: list) -> bool:
     
     return True
 
+def generate_configurations_with_physics(catalog_df, current_rules, max_configs=2000):
+    """Generate configurations using proper physics from original system"""
+    
+    # Filter glasses by position capabilities  
+    outer_glasses = catalog_df[catalog_df['Can_Outer'] == True]['NFRC_ID'].tolist()
+    center_glasses = catalog_df[catalog_df['Can_Center'] == True]['NFRC_ID'].tolist()
+    inner_glasses = catalog_df[catalog_df['Can_Inner'] == True]['NFRC_ID'].tolist()
+    quad_inner_glasses = catalog_df[catalog_df['Can_QuadInner'] == True]['NFRC_ID'].tolist()
+    
+    # Configuration options
+    oa_options = [0.88, 1.0, 1.25]  # Standard OA sizes
+    gas_options = ['90K', '95A']
+    
+    st.info("🔄 Fetching real glass metadata from IGSDB...")
+    
+    # Pre-fetch all metadata
+    all_glass_ids = set(outer_glasses + center_glasses + inner_glasses + quad_inner_glasses)
+    metadata_cache = {}
+    
+    progress_bar = st.progress(0)
+    for i, nfrc_id in enumerate(all_glass_ids):
+        metadata_cache[nfrc_id] = get_glass_metadata(nfrc_id)
+        progress_bar.progress((i + 1) / len(all_glass_ids))
+    progress_bar.empty()
+    
+    st.success(f"✅ Loaded metadata for {len(metadata_cache)} glass types")
+    
+    valid_configs = []
+    attempts = 0
+    max_attempts = max_configs * 3
+    
+    st.info("🔄 Generating configurations with proper physics...")
+    generation_progress = st.progress(0)
+    
+    # Generate Triples
+    for oa_size in oa_options:
+        if len(valid_configs) >= max_configs // 2:  # Half for triples
+            break
+        for gas_type in gas_options:
+            if len(valid_configs) >= max_configs // 2:
+                break
+            for outer_id in outer_glasses[:3]:  # Limit for speed
+                if len(valid_configs) >= max_configs // 2:
+                    break
+                for center_id in center_glasses:
+                    if len(valid_configs) >= max_configs // 2:
+                        break
+                    for inner_id in inner_glasses[:3]:  # Limit for speed
+                        if len(valid_configs) >= max_configs // 2:
+                            break
+                        
+                        attempts += 1
+                        if attempts > max_attempts:
+                            break
+                        
+                        # Get metadata
+                        m_o = metadata_cache.get(outer_id, {})
+                        m_c = metadata_cache.get(center_id, {})
+                        m_i = metadata_cache.get(inner_id, {})
+                        
+                        if not (m_o and m_c and m_i):
+                            continue
+                        
+                        # Apply manufacturing rules from original system
+                        if (m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL or 
+                            m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL):
+                            continue
+                            
+                        if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
+                            continue
+                            
+                        if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
+                            continue
+                            
+                        # Center must be thin
+                        if m_c.get("thickness_mm", 0) > 1.1 + TOL:
+                            continue
+                        
+                        # Calculate air gap from OA and real thicknesses
+                        glass_thicknesses = [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]]
+                        air_gap = calculate_air_gap_from_oa(oa_size, glass_thicknesses, 'Triple')
+                        
+                        # Validate air gap
+                        if air_gap < MIN_AIRGAP:
+                            continue
+                        
+                        # Coating conflict validation
+                        glass_configs = [
+                            {'meta': m_o, 'nfrc_id': outer_id},
+                            {'meta': m_c, 'nfrc_id': center_id},
+                            {'meta': m_i, 'nfrc_id': inner_id}
+                        ]
+                        if not validate_coating_conflicts(glass_configs):
+                            continue
+                        
+                        config = {
+                            'IGU Type': 'Triple',
+                            'OA (inches)': oa_size,
+                            'Gas Type': gas_type,
+                            'Glass 1 NFRC ID': outer_id,
+                            'Glass 2 NFRC ID': center_id,
+                            'Glass 3 NFRC ID': inner_id,
+                            'Glass 4 NFRC ID': '',
+                            'Air Gap (mm)': air_gap
+                        }
+                        
+                        # Final rule validation
+                        errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                        if not errors:
+                            valid_configs.append(config)
+                            
+                        # Update progress
+                        if len(valid_configs) % 50 == 0:
+                            generation_progress.progress(min(len(valid_configs) / max_configs, 1.0))
+    
+    # Generate Quads (similar logic but with 4 glasses)
+    for oa_size in [1.0, 1.25]:  # Only larger OAs for quads
+        if len(valid_configs) >= max_configs:
+            break
+        for gas_type in gas_options:
+            if len(valid_configs) >= max_configs:
+                break
+            for outer_id in outer_glasses[:2]:  # Even more limited for quads
+                if len(valid_configs) >= max_configs:
+                    break
+                for quad_inner_id in quad_inner_glasses[:2]:
+                    if len(valid_configs) >= max_configs:
+                        break
+                    for center_id in center_glasses:
+                        if len(valid_configs) >= max_configs:
+                            break
+                        for inner_id in inner_glasses[:2]:
+                            if len(valid_configs) >= max_configs:
+                                break
+                            
+                            attempts += 1
+                            if attempts > max_attempts:
+                                break
+                            
+                            # Get metadata
+                            m_o = metadata_cache.get(outer_id, {})
+                            m_q = metadata_cache.get(quad_inner_id, {})
+                            m_c = metadata_cache.get(center_id, {})
+                            m_i = metadata_cache.get(inner_id, {})
+                            
+                            if not (m_o and m_q and m_c and m_i):
+                                continue
+                            
+                            # Manufacturing validation
+                            if (m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL or 
+                                m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL):
+                                continue
+                                
+                            if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
+                                continue
+                                
+                            if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
+                                continue
+                                
+                            # Center must be thin
+                            if m_c.get("thickness_mm", 0) > 1.1 + TOL:
+                                continue
+                            
+                            # Calculate air gap for quad (3 gaps)
+                            glass_thicknesses = [m_o["thickness_mm"], m_q["thickness_mm"], 
+                                               m_c["thickness_mm"], m_i["thickness_mm"]]
+                            air_gap = calculate_air_gap_from_oa(oa_size, glass_thicknesses, 'Quad')
+                            
+                            if air_gap < MIN_AIRGAP:
+                                continue
+                            
+                            # Coating conflicts
+                            glass_configs = [
+                                {'meta': m_o, 'nfrc_id': outer_id},
+                                {'meta': m_q, 'nfrc_id': quad_inner_id},
+                                {'meta': m_c, 'nfrc_id': center_id},
+                                {'meta': m_i, 'nfrc_id': inner_id}
+                            ]
+                            if not validate_coating_conflicts(glass_configs):
+                                continue
+                            
+                            config = {
+                                'IGU Type': 'Quad',
+                                'OA (inches)': oa_size,
+                                'Gas Type': gas_type,
+                                'Glass 1 NFRC ID': outer_id,
+                                'Glass 2 NFRC ID': quad_inner_id,
+                                'Glass 3 NFRC ID': center_id,
+                                'Glass 4 NFRC ID': inner_id,
+                                'Air Gap (mm)': air_gap
+                            }
+                            
+                            # Final validation
+                            errors, warnings = validate_igu_configuration(config, catalog_df, current_rules)
+                            if not errors:
+                                valid_configs.append(config)
+                                
+                            # Update progress
+                            if len(valid_configs) % 50 == 0:
+                                generation_progress.progress(min(len(valid_configs) / max_configs, 1.0))
+    
+    generation_progress.empty()
+    
+    return valid_configs, attempts
+
 def calculate_air_gap_from_oa(oa_inches, glass_thicknesses_mm, igu_type):
     """Calculate air gap thickness from OA and glass thicknesses - PROPER VERSION"""
     # Convert OA to mm
@@ -1244,9 +1449,38 @@ elif current_step == 3:
     
     config_file = "igu_simulation_input_table.csv"
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
+        st.subheader("🧪 Physics-Based Generator")
+        st.success("**Recommended** - Uses real IGSDB data & proper physics")
+        
+        if st.button("🧪 Generate with Real Physics", type="primary"):
+            with st.spinner("Generating configurations with real physics..."):
+                catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
+                current_rules = load_generation_rules()
+                
+                try:
+                    valid_configs, attempts = generate_configurations_with_physics(
+                        catalog_df, current_rules, max_configs=2000
+                    )
+                    
+                    if valid_configs:
+                        mock_configs = pd.DataFrame(valid_configs)
+                        mock_configs.to_csv(config_file, index=False)
+                        
+                        triples = len(mock_configs[mock_configs['IGU Type'] == 'Triple'])
+                        quads = len(mock_configs[mock_configs['IGU Type'] == 'Quad'])
+                        
+                        st.success(f"✅ Generated {len(mock_configs):,} physically valid configurations in {attempts:,} attempts")
+                        st.info(f"📊 **Breakdown:** {triples:,} Triples, {quads:,} Quads")
+                        st.info("🔬 **Features:** Real glass thicknesses, calculated air gaps, manufacturing constraints")
+                    else:
+                        st.warning(f"⚠️ No valid configurations found after {attempts:,} attempts. Rules may be too restrictive.")
+                except Exception as e:
+                    st.error(f"❌ Generation failed: {e}")
+    
+    with col2:
         st.subheader("⚡ Fast Generate")
         st.info("Limited configurations for quick testing")
         
@@ -1357,9 +1591,9 @@ elif current_step == 3:
                 else:
                     st.success(f"✅ Generated {len(mock_configs):,} configurations in {attempts:,} attempts")
     
-    with col2:
-        st.subheader("🔥 Full Generate")
-        st.warning("Complete configuration set")
+    with col3:
+        st.subheader("🔥 Legacy Full Generate")
+        st.warning("⚠️ Uses fake data - for testing only")
         
         # Calculate total possible configurations
         catalog_df = st.session_state.get('catalog_df', pd.read_csv('unified_glass_catalog.csv'))
