@@ -453,7 +453,7 @@ def create_visual_rule_builder():
         "🏭 **Manufacturer Rule**: When outer manufacturer = Generic AND inner manufacturer ≠ Generic → Show warning 'Mixed manufacturers may have compatibility issues'",
         "⛽ **Gas Rule**: When IGU type = Quad AND gas type ≠ 95A → Suggest improvement 'Quad panes perform best with 95A gas'", 
         "📏 **Spacer Rule**: When air gap < 6mm OR air gap > 20mm → Block configuration 'Spacer thickness must be 6-20mm'",
-        "🎯 **Performance Rule**: When U-value target < 0.20 AND gas type = Air → Show warning 'Low U-values require argon gas fill'"
+        "🔧 **Coating Rule**: When outer coating emissivity > inner coating emissivity → Block configuration 'Inner coating must have lower or equal emissivity'"
     ]
     
     for example in examples:
