@@ -22,7 +22,7 @@ IGSDB_HEADERS = {
     "Authorization": f"Token {API_KEY}"
 }
 
-UNIFIED_GLASS_PATH = "unified_glass_catalog.csv"
+UNIFIED_GLASS_PATH = "unified_glass_catalog_enhanced.csv"
 OA_SIZES_PATH = "input_oa_sizes.csv"
 GAS_TYPES_PATH = "input_gas_types.csv"
 OUTPUT_PATH = "igu_simulation_input_table.csv"
