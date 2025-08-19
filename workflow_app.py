@@ -171,26 +171,40 @@ if current_step == 1:
             "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner")
         }
         
-        # Add enhanced columns if they exist
-        if 'Coating_Side' in catalog_df.columns:
-            column_config["Coating_Side"] = st.column_config.TextColumn("Coating Side", 
-                help="Which side the coating is on (front/back/neither)")
-        if 'Coating_Name' in catalog_df.columns:
-            column_config["Coating_Name"] = st.column_config.TextColumn("Coating Name", 
-                help="Name of the coating from IGSDB")
-        if 'Emissivity' in catalog_df.columns:
-            column_config["Emissivity"] = st.column_config.NumberColumn("Emissivity", 
-                format="%.3f", help="Emissivity value from IGSDB")
-        if 'IGSDB_Status' in catalog_df.columns:
-            column_config["IGSDB_Status"] = st.column_config.TextColumn("IGSDB Status", 
-                help="Status of IGSDB data retrieval")
+        # Add enhanced columns if they exist (using try-catch for compatibility)
+        try:
+            if 'Coating_Side' in catalog_df.columns:
+                column_config["Coating_Side"] = st.column_config.TextColumn("Coating Side", 
+                    help="Which side the coating is on (front/back/neither)")
+            if 'Coating_Name' in catalog_df.columns:
+                column_config["Coating_Name"] = st.column_config.TextColumn("Coating Name", 
+                    help="Name of the coating from IGSDB")
+            if 'Emissivity' in catalog_df.columns:
+                column_config["Emissivity"] = st.column_config.NumberColumn("Emissivity", 
+                    format="%.3f", help="Emissivity value from IGSDB")
+            if 'IGSDB_Status' in catalog_df.columns:
+                column_config["IGSDB_Status"] = st.column_config.TextColumn("IGSDB Status", 
+                    help="Status of IGSDB data retrieval")
+        except AttributeError:
+            # Fallback for older Streamlit versions - just show basic columns
+            st.info("💡 Enhanced coating information columns available - may require newer Streamlit version")
         
-        edited_df = st.data_editor(
-            catalog_df,
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config=column_config
-        )
+        # Use data editor with simplified config for maximum compatibility
+        try:
+            edited_df = st.data_editor(
+                catalog_df,
+                use_container_width=True,
+                num_rows="dynamic",
+                column_config=column_config
+            )
+        except Exception as e:
+            st.warning(f"⚠️ Column configuration error, using basic editor. Error: {str(e)}")
+            # Fallback to basic data editor without custom column config
+            edited_df = st.data_editor(
+                catalog_df,
+                use_container_width=True,
+                num_rows="dynamic"
+            )
         
         # Save changes
         col1, col2 = st.columns(2)
