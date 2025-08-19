@@ -114,27 +114,38 @@ if current_step == 1:
         
         # Coating side distribution
         st.subheader("🎨 Coating Information Summary")
-        if 'Coating_Side' in catalog_df.columns:
+        if 'Coating_Side' in catalog_df.columns and len(catalog_df) > 0:
             col1, col2, col3 = st.columns(3)
             with col1:
-                coating_summary = catalog_df['Coating_Side'].value_counts()
-                st.write("**Coating Side Distribution:**")
-                for side, count in coating_summary.items():
-                    st.write(f"• {side}: {count}")
+                try:
+                    coating_summary = catalog_df['Coating_Side'].value_counts()
+                    st.write("**Coating Side Distribution:**")
+                    for side, count in coating_summary.items():
+                        st.write(f"• {side}: {count}")
+                except Exception as e:
+                    st.write("**Coating Side Distribution:** Error loading data")
             with col2:
                 if 'Coating_Name' in catalog_df.columns:
-                    coating_names = catalog_df[catalog_df['Coating_Name'] != 'N/A']['Coating_Name'].value_counts()
-                    st.write("**Top Coating Types:**")
-                    for name, count in coating_names.head(5).items():
-                        st.write(f"• {name}: {count}")
+                    try:
+                        coating_names = catalog_df[catalog_df['Coating_Name'].notna() & (catalog_df['Coating_Name'] != 'N/A')]['Coating_Name'].value_counts()
+                        st.write("**Top Coating Types:**")
+                        for name, count in coating_names.head(5).items():
+                            st.write(f"• {name}: {count}")
+                    except Exception as e:
+                        st.write("**Top Coating Types:** Error loading data")
             with col3:
                 if 'Emissivity' in catalog_df.columns:
-                    coated_glass = catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])]
-                    if len(coated_glass) > 0:
-                        avg_emissivity = coated_glass['Emissivity'].mean()
-                        st.metric("Avg Coated Emissivity", f"{avg_emissivity:.3f}")
-                        clear_emissivity = catalog_df[catalog_df['Coating_Side'] == 'neither']['Emissivity'].iloc[0]
-                        st.metric("Clear Glass Emissivity", f"{clear_emissivity:.3f}")
+                    try:
+                        coated_glass = catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])]
+                        if len(coated_glass) > 0:
+                            avg_emissivity = coated_glass['Emissivity'].mean()
+                            st.metric("Avg Coated Emissivity", f"{avg_emissivity:.3f}")
+                        clear_glass = catalog_df[catalog_df['Coating_Side'] == 'neither']
+                        if len(clear_glass) > 0:
+                            clear_emissivity = clear_glass['Emissivity'].iloc[0]
+                            st.metric("Clear Glass Emissivity", f"{clear_emissivity:.3f}")
+                    except Exception as e:
+                        st.write("**Emissivity Data:** Error loading data")
         
         st.markdown("""
         **🔄 Flip Logic Guide:**
@@ -148,29 +159,37 @@ if current_step == 1:
         st.subheader("📝 Catalog Editor")
         st.info("Edit position capabilities and flip logic for each glass type")
         
+        # Build column config dynamically based on available columns
+        column_config = {
+            "Can_Outer": st.column_config.CheckboxColumn("Can be Outer"),
+            "Can_QuadInner": st.column_config.CheckboxColumn("Can be Quad Inner"),  
+            "Can_Center": st.column_config.CheckboxColumn("Can be Center"),
+            "Can_Inner": st.column_config.CheckboxColumn("Can be Inner"),
+            "Flip_Outer": st.column_config.CheckboxColumn("Flip when Outer"),
+            "Flip_QuadInner": st.column_config.CheckboxColumn("Flip when Quad Inner"),
+            "Flip_Center": st.column_config.CheckboxColumn("Flip when Center"), 
+            "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner")
+        }
+        
+        # Add enhanced columns if they exist
+        if 'Coating_Side' in catalog_df.columns:
+            column_config["Coating_Side"] = st.column_config.TextColumn("Coating Side", 
+                help="Which side the coating is on (front/back/neither)")
+        if 'Coating_Name' in catalog_df.columns:
+            column_config["Coating_Name"] = st.column_config.TextColumn("Coating Name", 
+                help="Name of the coating from IGSDB")
+        if 'Emissivity' in catalog_df.columns:
+            column_config["Emissivity"] = st.column_config.NumberColumn("Emissivity", 
+                format="%.3f", help="Emissivity value from IGSDB")
+        if 'IGSDB_Status' in catalog_df.columns:
+            column_config["IGSDB_Status"] = st.column_config.TextColumn("IGSDB Status", 
+                help="Status of IGSDB data retrieval")
+        
         edited_df = st.data_editor(
             catalog_df,
             use_container_width=True,
             num_rows="dynamic",
-            column_config={
-                "Can_Outer": st.column_config.CheckboxColumn("Can be Outer"),
-                "Can_QuadInner": st.column_config.CheckboxColumn("Can be Quad Inner"),  
-                "Can_Center": st.column_config.CheckboxColumn("Can be Center"),
-                "Can_Inner": st.column_config.CheckboxColumn("Can be Inner"),
-                "Flip_Outer": st.column_config.CheckboxColumn("Flip when Outer"),
-                "Flip_QuadInner": st.column_config.CheckboxColumn("Flip when Quad Inner"),
-                "Flip_Center": st.column_config.CheckboxColumn("Flip when Center"), 
-                "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner"),
-                "Coating_Side": st.column_config.SelectColumn("Coating Side", 
-                    options=["neither", "front", "back", "unknown"], 
-                    help="Which side the coating is on"),
-                "Coating_Name": st.column_config.TextColumn("Coating Name", 
-                    help="Name of the coating from IGSDB"),
-                "Emissivity": st.column_config.NumberColumn("Emissivity", 
-                    format="%.3f", help="Emissivity value from IGSDB"),
-                "IGSDB_Status": st.column_config.TextColumn("IGSDB Status", 
-                    help="Status of IGSDB data retrieval")
-            }
+            column_config=column_config
         )
         
         # Save changes
