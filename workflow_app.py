@@ -20,6 +20,14 @@ if 'workflow_step' not in st.session_state:
 
 st.title("🏔️ ALPENSIMULATOR - Complete IGU Workflow")
 st.markdown("**End-to-end IGU analysis: From catalog management to performance optimization**")
+st.caption("🔄 Updated with enhanced coating analysis and compatibility fixes")
+
+# Debug info
+try:
+    import streamlit
+    st.caption(f"Running Streamlit {streamlit.__version__}")
+except:
+    pass
 
 # Progress indicator
 progress_steps = [
