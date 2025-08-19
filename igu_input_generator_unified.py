@@ -226,6 +226,19 @@ def edges_manufacturer_match(m_o: str, m_i: str) -> bool:
     # Allow if either is a substring of the other (handles variations like "Cardinal Glass Co.")
     return mo in mi or mi in mo
 
+def get_emissivity_from_catalog_or_meta(glass_row, meta: dict) -> float:
+    """Get emissivity value from catalog first, fallback to IGSDB metadata."""
+    # Try catalog emissivity column first (more reliable if available)
+    if 'Emissivity' in glass_row.index and pd.notna(glass_row['Emissivity']):
+        return float(glass_row['Emissivity'])
+    
+    # Fallback to IGSDB metadata if catalog doesn't have it
+    if meta and 'emissivity' in meta:
+        return float(meta['emissivity'])
+    
+    # Default to clear glass emissivity if no data available
+    return 0.84
+
 def parse_lowe_value(name: str) -> int:
     for tok in name.replace('-', ' ').split():
         if tok.isdigit(): return int(tok)
@@ -308,6 +321,12 @@ def generate_unified_configs():
                         # Manufacturer compatibility with Generic flexibility
                         if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
                             continue
+                        
+                        # Low-E ordering: outer emissivity >= inner emissivity (prevent thermal imbalance)
+                        outer_emissivity = get_emissivity_from_catalog_or_meta(o, m_o)
+                        inner_emissivity = get_emissivity_from_catalog_or_meta(i, m_i)
+                        if outer_emissivity < inner_emissivity:
+                            continue
                             
                         # Choose optimal gap set for target OA
                         gap_result = choose_gap_set(oa_mm, [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 2)
@@ -387,6 +406,12 @@ def generate_unified_configs():
                             # Apply validation rules
                             # Manufacturer compatibility with Generic flexibility
                             if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
+                                continue
+                            
+                            # Low-E ordering: outer emissivity >= inner emissivity (prevent thermal imbalance)
+                            outer_emissivity = get_emissivity_from_catalog_or_meta(o, m_o)
+                            inner_emissivity = get_emissivity_from_catalog_or_meta(i, m_i)
+                            if outer_emissivity < inner_emissivity:
                                 continue
                             
                             # Choose optimal gap set for target OA 
