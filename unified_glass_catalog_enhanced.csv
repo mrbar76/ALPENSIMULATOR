@@ -9,7 +9,7 @@ NFRC_ID,Short_Name,Manufacturer,Can_Outer,Can_QuadInner,Can_Center,Can_Inner,Fli
 2013,LoE 272 on 5.0mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE² 272,0.839999973773956,✅ Found
 2014,LoE 272 on 6.0mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE² 272,0.839999973773956,✅ Found
 2154,LoE 366 on 3mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE³ 366,0.839999973773956,✅ Found
-2155,LoE 366 on 4mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE³ 366,0.839999973773956,✅ Found
+2155,LoE 366 on 4mm Clear,Cardinal,True,False,False,True,False,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE³ 366,0.839999973773956,✅ Found
 2156,LoE 366 on 5mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE³ 366,0.839999973773956,✅ Found
 2157,LoE 366 on 6mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE³ 366,0.839999973773956,✅ Found
 2159,i89 on 3.0mm Clear,Cardinal,False,False,False,True,False,False,False,True,i89 coating - inner position only with special flip logic,back,i89,0.839999973773956,✅ Found
