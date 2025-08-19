@@ -38,6 +38,7 @@ LBNL*/
 *.csv
 !input_*.csv
 !unified_glass_catalog.csv
+!unified_glass_catalog_enhanced.csv
 
 # Temporary files
 ~$*
