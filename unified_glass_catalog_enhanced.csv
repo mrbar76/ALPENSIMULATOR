@@ -32,7 +32,7 @@ NFRC_ID,Short_Name,Manufacturer,Can_Outer,Can_QuadInner,Can_Center,Can_Inner,Fli
 3416,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
 3420,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
 22501,0.5 mm Architectural Technical Glazing,Architectural,False,True,True,False,False,False,False,False,Ultra-thin glass for quad-inner and center positions,neither,N/A,0.839999973773956,✅ Found
-22720,Nexlite NX-SS-01,NexLite,False,False,True,False,False,False,True,False,Specialty center coating - flip for surface 6,front,Unknown,0.0727065950632095,✅ Found
+22720,Nexlite NX-SS-01,NexLite,False,True,True,False,False,False,True,False,Specialty center coating - 1.1mm suitable for quad inner and center positions,front,NxLite,0.0727065950632095,✅ Found
 26126,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
 26360,ClimaGuard SGSN68,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SN 68,0.839999973773956,✅ Found
 26363,ClimaGuard SGSNE50,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SNE 50,0.839999973773956,✅ Found

@@ -214,6 +214,18 @@ def choose_gap_set(oa_target_mm: float, glass_thicknesses: list, gap_count: int)
     selected['oa_delta_mm'] = selected['signed_error']
     return selected
 
+def edges_manufacturer_match(m_o: str, m_i: str) -> bool:
+    """Check if outer and inner glass manufacturers are compatible."""
+    if not m_o or not m_i:
+        return False
+    mo = m_o.strip().lower()
+    mi = m_i.strip().lower()
+    # Generic is universal - compatible with any manufacturer
+    if "generic" in (mo, mi):
+        return True
+    # Allow if either is a substring of the other (handles variations like "Cardinal Glass Co.")
+    return mo in mi or mi in mo
+
 def parse_lowe_value(name: str) -> int:
     for tok in name.replace('-', ' ').split():
         if tok.isdigit(): return int(tok)
@@ -293,8 +305,8 @@ def generate_unified_configs():
                             continue
                             
                         # Apply validation rules
-                        # Only keep manufacturer matching rule
-                        if not (m_o["manufacturer"].lower() == m_i["manufacturer"].lower()):
+                        # Manufacturer compatibility with Generic flexibility
+                        if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
                             continue
                             
                         # Choose optimal gap set for target OA
@@ -373,8 +385,8 @@ def generate_unified_configs():
                                 continue
                                 
                             # Apply validation rules
-                            # Only keep manufacturer matching rule
-                            if not (m_o["manufacturer"].lower() == m_i["manufacturer"].lower()):
+                            # Manufacturer compatibility with Generic flexibility
+                            if not edges_manufacturer_match(m_o["manufacturer"], m_i["manufacturer"]):
                                 continue
                             
                             # Choose optimal gap set for target OA 
