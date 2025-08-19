@@ -168,52 +168,14 @@ if current_step == 1:
         st.subheader("📝 Catalog Editor")
         st.info("Edit position capabilities and flip logic for each glass type")
         
-        # Build column config dynamically based on available columns
-        column_config = {
-            "Can_Outer": st.column_config.CheckboxColumn("Can be Outer"),
-            "Can_QuadInner": st.column_config.CheckboxColumn("Can be Quad Inner"),  
-            "Can_Center": st.column_config.CheckboxColumn("Can be Center"),
-            "Can_Inner": st.column_config.CheckboxColumn("Can be Inner"),
-            "Flip_Outer": st.column_config.CheckboxColumn("Flip when Outer"),
-            "Flip_QuadInner": st.column_config.CheckboxColumn("Flip when Quad Inner"),
-            "Flip_Center": st.column_config.CheckboxColumn("Flip when Center"), 
-            "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner")
-        }
+        # Simplified data editor without column config to avoid compatibility issues
+        st.info("💡 Use checkboxes for position capabilities and flip settings. Enhanced coating data included when available.")
         
-        # Add enhanced columns if they exist (using try-catch for compatibility)
-        try:
-            if 'Coating_Side' in catalog_df.columns:
-                column_config["Coating_Side"] = st.column_config.TextColumn("Coating Side", 
-                    help="Which side the coating is on (front/back/neither)")
-            if 'Coating_Name' in catalog_df.columns:
-                column_config["Coating_Name"] = st.column_config.TextColumn("Coating Name", 
-                    help="Name of the coating from IGSDB")
-            if 'Emissivity' in catalog_df.columns:
-                column_config["Emissivity"] = st.column_config.NumberColumn("Emissivity", 
-                    format="%.3f", help="Emissivity value from IGSDB")
-            if 'IGSDB_Status' in catalog_df.columns:
-                column_config["IGSDB_Status"] = st.column_config.TextColumn("IGSDB Status", 
-                    help="Status of IGSDB data retrieval")
-        except AttributeError:
-            # Fallback for older Streamlit versions - just show basic columns
-            st.info("💡 Enhanced coating information columns available - may require newer Streamlit version")
-        
-        # Use data editor with simplified config for maximum compatibility
-        try:
-            edited_df = st.data_editor(
-                catalog_df,
-                use_container_width=True,
-                num_rows="dynamic",
-                column_config=column_config
-            )
-        except Exception as e:
-            st.warning(f"⚠️ Column configuration error, using basic editor. Error: {str(e)}")
-            # Fallback to basic data editor without custom column config
-            edited_df = st.data_editor(
-                catalog_df,
-                use_container_width=True,
-                num_rows="dynamic"
-            )
+        edited_df = st.data_editor(
+            catalog_df,
+            use_container_width=True,
+            num_rows="dynamic"
+        )
         
         # Save changes
         col1, col2 = st.columns(2)
