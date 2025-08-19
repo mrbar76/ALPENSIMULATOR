@@ -134,16 +134,9 @@ def calculate_air_gap(oa_mm: float, glass_thicknesses: list, gap_count: int) -> 
     total_gap_space = oa_mm - total_glass_thickness
     return total_gap_space / gap_count
 
-def choose_gap_set(oa_target_mm: float, glass_thicknesses: list, gap_count: int) -> dict:
+def choose_gap_set_fast(oa_target_mm: float, glass_thicknesses: list, gap_count: int) -> dict:
     """
-    Choose integer gap set that minimizes OA error with undershoot preference.
-    
-    Returns dict with:
-    - gaps_mm: list of integer gap sizes
-    - oa_actual_mm: actual OA achieved
-    - oa_actual_in: actual OA in inches  
-    - oa_delta_mm: signed error (actual - target)
-    - selection_reason: explanation
+    Fast gap selection using smart search instead of brute force.
     """
     # Get policy settings
     standard_gaps = rules_config.rules.get('oa_selection_policy', {}).get('standard_gap_sizes_mm', [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
@@ -154,62 +147,80 @@ def choose_gap_set(oa_target_mm: float, glass_thicknesses: list, gap_count: int)
     total_gap_space = oa_target_mm - total_glass_thickness
     ideal_gap = total_gap_space / gap_count
     
-    # Generate candidate gap combinations
-    candidates = []
     valid_gaps = [g for g in standard_gaps if g >= min_gap]
     
+    # Smart search: start with closest integer gaps to ideal
+    base_gap = max(min_gap, min(max(valid_gaps), round(ideal_gap)))
+    
+    # Generate a focused set of candidates around the ideal
+    candidates = []
+    
     if gap_count == 2:  # Triple
-        for gap1 in valid_gaps:
-            for gap2 in valid_gaps:
-                gaps = [gap1, gap2]
-                oa_actual = total_glass_thickness + sum(gaps)
-                candidates.append({
-                    'gaps_mm': gaps,
-                    'oa_actual_mm': oa_actual,
-                    'oa_actual_in': round(oa_actual / 25.4, 3),
-                    'signed_error': oa_actual - oa_target_mm
-                })
-    elif gap_count == 3:  # Quad
-        for gap1 in valid_gaps:
-            for gap2 in valid_gaps:
-                for gap3 in valid_gaps:
-                    gaps = [gap1, gap2, gap3]
+        # Try combinations around the ideal gap
+        for g1_offset in [-2, -1, 0, 1, 2]:
+            for g2_offset in [-2, -1, 0, 1, 2]:
+                g1 = max(min_gap, min(max(valid_gaps), base_gap + g1_offset))
+                g2 = max(min_gap, min(max(valid_gaps), base_gap + g2_offset))
+                if g1 in valid_gaps and g2 in valid_gaps:
+                    gaps = [g1, g2]
                     oa_actual = total_glass_thickness + sum(gaps)
                     candidates.append({
                         'gaps_mm': gaps,
                         'oa_actual_mm': oa_actual,
                         'oa_actual_in': round(oa_actual / 25.4, 3),
-                        'signed_error': oa_actual - oa_target_mm
+                        'signed_error': oa_actual - oa_target_mm,
+                        'oa_error': abs(oa_actual - oa_target_mm)
                     })
     
-    # Score by absolute error
-    for c in candidates:
-        c['oa_error'] = abs(c['signed_error'])
-    
-    # Sort by absolute error
-    candidates.sort(key=lambda c: c['oa_error'])
+    elif gap_count == 3:  # Quad
+        # Try combinations around the ideal gap  
+        for g1_offset in [-1, 0, 1]:
+            for g2_offset in [-1, 0, 1]:
+                for g3_offset in [-1, 0, 1]:
+                    g1 = max(min_gap, min(max(valid_gaps), base_gap + g1_offset))
+                    g2 = max(min_gap, min(max(valid_gaps), base_gap + g2_offset))
+                    g3 = max(min_gap, min(max(valid_gaps), base_gap + g3_offset))
+                    if all(g in valid_gaps for g in [g1, g2, g3]):
+                        gaps = [g1, g2, g3]
+                        oa_actual = total_glass_thickness + sum(gaps)
+                        candidates.append({
+                            'gaps_mm': gaps,
+                            'oa_actual_mm': oa_actual,
+                            'oa_actual_in': round(oa_actual / 25.4, 3),
+                            'signed_error': oa_actual - oa_target_mm,
+                            'oa_error': abs(oa_actual - oa_target_mm)
+                        })
     
     if not candidates:
         return None
-        
-    best = candidates[0]
+    
+    # Remove duplicates
+    unique_candidates = []
+    seen = set()
+    for c in candidates:
+        key = tuple(c['gaps_mm'])
+        if key not in seen:
+            seen.add(key)
+            unique_candidates.append(c)
+    
+    # Sort by absolute error
+    unique_candidates.sort(key=lambda c: c['oa_error'])
+    best = unique_candidates[0]
     
     # Find near-equal alternatives
-    near_equals = [c for c in candidates if c['oa_error'] - best['oa_error'] <= near_equal_band]
+    near_equals = [c for c in unique_candidates if c['oa_error'] - best['oa_error'] <= near_equal_band]
     
-    # Tie-breaker: prefer undershoot (negative signed_error)
+    # Tie-breaker: prefer undershoot
     undershoots = [c for c in near_equals if c['signed_error'] <= 0]
     
     if undershoots:
-        # Choose closest to target among undershoots
         undershoots.sort(key=lambda c: abs(c['signed_error']))
         selected = undershoots[0]
-        selected['selection_reason'] = "Preferred undershoot among near-equal options"
+        selected['selection_reason'] = "Preferred undershoot"
     else:
-        # All near-equals overshoot; keep closest to target
         near_equals.sort(key=lambda c: abs(c['signed_error']))
         selected = near_equals[0]
-        selected['selection_reason'] = "Minimum absolute error (all options overshoot)"
+        selected['selection_reason'] = "Minimum error"
     
     selected['oa_delta_mm'] = selected['signed_error']
     return selected
@@ -262,6 +273,12 @@ def generate_unified_configs():
     quad_inner_df = glass_df[glass_df['Can_QuadInner'] == True].copy()
     center_df = glass_df[glass_df['Can_Center'] == True].copy()
     inner_df = glass_df[glass_df['Can_Inner'] == True].copy()
+    
+    # Pre-compute emissivity values for all glass to avoid repeated lookups
+    print("🔧 Pre-computing emissivity values...")
+    for df in [outer_df, quad_inner_df, center_df, inner_df]:
+        if len(df) > 0:
+            df['_emissivity'] = df.apply(lambda row: get_emissivity_from_catalog_or_meta(row, get_meta_with_cache(row.NFRC_ID, cache)), axis=1)
     
     print(f"📊 Unified glass catalog summary:")
     print(f"   Total glass types: {len(glass_df)}")
@@ -323,13 +340,11 @@ def generate_unified_configs():
                             continue
                         
                         # Low-E ordering: outer emissivity >= inner emissivity (prevent thermal imbalance)
-                        outer_emissivity = get_emissivity_from_catalog_or_meta(o, m_o)
-                        inner_emissivity = get_emissivity_from_catalog_or_meta(i, m_i)
-                        if outer_emissivity < inner_emissivity:
+                        if o['_emissivity'] < i['_emissivity']:
                             continue
                             
                         # Choose optimal gap set for target OA
-                        gap_result = choose_gap_set(oa_mm, [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 2)
+                        gap_result = choose_gap_set_fast(oa_mm, [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 2)
                         if not gap_result or min(gap_result['gaps_mm']) < MIN_AIRGAP:
                             continue
                             
@@ -409,13 +424,11 @@ def generate_unified_configs():
                                 continue
                             
                             # Low-E ordering: outer emissivity >= inner emissivity (prevent thermal imbalance)
-                            outer_emissivity = get_emissivity_from_catalog_or_meta(o, m_o)
-                            inner_emissivity = get_emissivity_from_catalog_or_meta(i, m_i)
-                            if outer_emissivity < inner_emissivity:
+                            if o['_emissivity'] < i['_emissivity']:
                                 continue
                             
                             # Choose optimal gap set for target OA 
-                            gap_result = choose_gap_set(oa_mm, [m_o["thickness_mm"], m_q["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 3)
+                            gap_result = choose_gap_set_fast(oa_mm, [m_o["thickness_mm"], m_q["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 3)
                             if not gap_result or min(gap_result['gaps_mm']) < MIN_AIRGAP:
                                 continue
                                 
