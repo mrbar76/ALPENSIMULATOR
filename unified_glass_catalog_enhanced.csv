@@ -1,9 +1,11 @@
 NFRC_ID,Short_Name,Manufacturer,Can_Outer,Can_QuadInner,Can_Center,Can_Inner,Flip_Outer,Flip_QuadInner,Flip_Center,Flip_Inner,Notes,Coating_Side,Coating_Name,Emissivity,IGSDB_Status
 102,Generic Clear 3mm,Generic,True,False,False,True,False,False,False,False,Universal clear glass - too thick for quad inner positions (>1.1mm),neither,N/A,0.839999973773956,✅ Found
 103,Generic Clear 6mm,Generic,True,False,False,True,False,False,False,False,Standard thick clear glass - too thick for quad inner positions (>1.1mm),neither,N/A,0.839999973773956,✅ Found
-107,Generic 1.1 mm Clear,Generic,False,True,True,False,False,False,False,False,Thin glass for quad-inner and center positions,neither,N/A,0.839999973773956,✅ Found
 119,Generic Clear 4mm,Generic,True,False,False,True,False,False,False,False,Medium thickness clear - too thick for quad inner positions (>1.1mm),neither,N/A,0.839999973773956,✅ Found
 120,Generic Clear 5mm,Generic,True,False,False,True,False,False,False,False,Medium thickness clear - too thick for quad inner positions (>1.1mm),neither,N/A,0.839999973773956,✅ Found
+107,Generic 1.1 mm Clear,Generic,False,True,True,False,False,False,False,False,Thin glass for quad-inner and center positions,neither,N/A,0.839999973773956,✅ Found
+22501,0.5 mm Architectural Technical Glazing,Architectural,False,True,True,False,False,False,False,False,Ultra-thin glass for quad-inner and center positions,neither,N/A,0.839999973773956,✅ Found
+22720,Nexlite NX-SS-01,NexLite,False,True,True,False,False,False,True,False,Specialty center coating - 1.1mm suitable for quad inner and center positions,front,NxLite,0.0727065950632095,✅ Found
 2011,LoE 272 on 3.0mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE² 272,0.839999973773956,✅ Found
 2012,LoE 272 on 4.0mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE² 272,0.839999973773956,✅ Found
 2013,LoE 272 on 5.0mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE² 272,0.839999973773956,✅ Found
@@ -20,22 +22,3 @@ NFRC_ID,Short_Name,Manufacturer,Can_Outer,Can_QuadInner,Can_Center,Can_Inner,Fli
 2192,LoE 180 on 4mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE 180,0.839999973773956,✅ Found
 2193,LoE 180 on 5mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE 180,0.839999973773956,✅ Found
 2194,LoE 180 on 6mm Clear,Cardinal,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,LoE 180,0.839999973773956,✅ Found
-3119,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),unknown,unknown,,NFRC ID not found
-3290,ClimaGuard IS-20,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS,0.839999973773956,✅ Found
-3291,ClimaGuard IS-20,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS,0.839999973773956,✅ Found
-3292,ClimaGuard IS-20,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS,0.839999973773956,✅ Found
-3293,ClimaGuard IS-20,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS,0.839999973773956,✅ Found
-3327,ClimaGuard IS-15,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS-15,0.839999973773956,✅ Found
-3328,ClimaGuard IS-15,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS-15,0.839999973773956,✅ Found
-3329,ClimaGuard IS-15,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS-15,0.839999973773956,✅ Found
-3330,ClimaGuard IS-15,Guardian,False,False,False,True,False,False,False,True,High performance coating - inner only,back,ClimaGuard IS-15,0.839999973773956,✅ Found
-3416,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
-3420,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
-22501,0.5 mm Architectural Technical Glazing,Architectural,False,True,True,False,False,False,False,False,Ultra-thin glass for quad-inner and center positions,neither,N/A,0.839999973773956,✅ Found
-22720,Nexlite NX-SS-01,NexLite,False,True,True,False,False,False,True,False,Specialty center coating - 1.1mm suitable for quad inner and center positions,front,NxLite,0.0727065950632095,✅ Found
-26126,ClimaGuard 62/27,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuard® SNX 62/27,0.839999973773956,✅ Found
-26360,ClimaGuard SGSN68,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SN 68,0.839999973773956,✅ Found
-26363,ClimaGuard SGSNE50,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SNE 50,0.839999973773956,✅ Found
-26366,ClimaGuard SNX5123,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SNX 51/23,0.839999973773956,✅ Found
-26369,ClimaGuard SGSNR50,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SNR 50,0.839999973773956,✅ Found
-26372,ClimaGuard SNX6227,Guardian,True,False,False,True,True,False,True,True,Low-E coating - too thick for quad inner positions (>1.1mm),back,SunGuardÂ® SNX 62/27,0.839999973773956,✅ Found
