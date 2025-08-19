@@ -22,10 +22,11 @@ st.title("🏔️ ALPENSIMULATOR - Complete IGU Workflow")
 st.markdown("**End-to-end IGU analysis: From catalog management to performance optimization**")
 st.caption("🔄 Updated with enhanced coating analysis and compatibility fixes")
 
-# Debug info
+# Debug info and deployment verification
 try:
     import streamlit
-    st.caption(f"Running Streamlit {streamlit.__version__}")
+    from datetime import datetime
+    st.caption(f"Running Streamlit {streamlit.__version__} - Deployed: 2025-08-19 00:35 UTC")
 except:
     pass
 
@@ -88,35 +89,50 @@ if current_step == 1:
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("**Triple-Pane IGU Surfaces:**")
-                st.text("""
-        Outside ←                    → Inside
-        
-        Glass 1    Air Gap    Glass 2    Air Gap    Glass 3
-        ┌─────┐               ┌─────┐               ┌─────┐
-        │  1  │ 2           3 │  4  │ 5           6 │  7  │
-        └─────┘               └─────┘               └─────┘
-        Outer                 Center                Inner
-        
-        • Surface 2: Standard low-E (outer glass back)
-        • Surface 4: Center coatings (center glass back) 
-        • Surface 5: Inner low-E (inner glass front)
+                st.markdown("**Triple-Pane IGU Cross-Section:**")
+                st.markdown("""
+                ```
+                OUTSIDE                                    INSIDE
+                    ↑                                        ↑
+                ┌───────┐      ┌───────┐      ┌───────┐
+                │   1   │  2   │   3   │  4   │   5   │  6
+                │GLASS 1│ GAP1 │GLASS 2│ GAP2 │GLASS 3│
+                │(Outer)│      │(Center)│      │(Inner)│
+                └───────┘      └───────┘      └───────┘
+                
+                Surface Numbers & Coating Placement:
+                • Surface 1: Outer glass exterior (weather side)
+                • Surface 2: Outer glass interior → Low-E coating
+                • Surface 3: Center glass exterior 
+                • Surface 4: Center glass interior → Center coatings
+                • Surface 5: Inner glass exterior → Low-E coating  
+                • Surface 6: Inner glass interior (room side)
+                ```
                 """)
             
             with col2:
-                st.markdown("**Quad-Pane IGU Surfaces:**")
-                st.text("""
-        Outside ←                                          → Inside
-        
-        Glass 1  Gap  Glass 2  Gap  Glass 3  Gap  Glass 4
-        ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
-        │  1  │ 2 3 │  4  │ 5 6 │  7  │ 8 9 │ 10  │
-        └─────┘     └─────┘     └─────┘     └─────┘
-        Outer      Quad-Inner   Center      Inner
-        
-        • Surface 2: Standard low-E (outer glass back)
-        • Surface 6: Center coatings (center glass back)
-        • Surface 8: Inner low-E (inner glass front)
+                st.markdown("**Quad-Pane IGU Cross-Section:**")
+                st.markdown("""
+                ```
+                OUTSIDE                                              INSIDE
+                    ↑                                                  ↑
+                ┌─────┐    ┌─────┐    ┌─────┐    ┌─────┐
+                │  1  │ 2  │  3  │ 4  │  5  │ 6  │  7  │ 8
+                │GLASS│GAP1│GLASS│GAP2│GLASS│GAP3│GLASS│
+                │  1  │    │  2  │    │  3  │    │  4  │
+                │(Out)│    │(Q-In)│   │(Cntr)│   │(Inn)│
+                └─────┘    └─────┘    └─────┘    └─────┘
+                
+                Surface Numbers & Coating Placement:
+                • Surface 1: Outer glass exterior (weather side)
+                • Surface 2: Outer glass interior → Low-E coating
+                • Surface 3: Quad-inner glass exterior
+                • Surface 4: Quad-inner glass interior
+                • Surface 5: Center glass exterior
+                • Surface 6: Center glass interior → Center coatings
+                • Surface 7: Inner glass exterior → Low-E coating
+                • Surface 8: Inner glass interior (room side)
+                ```
                 """)
             
             st.info("💡 **Coating Side Logic:** 'Front' = faces inside, 'Back' = faces outside. Flipping changes which surface the coating ends up on.")
