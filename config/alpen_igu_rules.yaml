@@ -54,6 +54,11 @@ constants:
   MIN_EDGE_NOMINAL: 3.0
   QUAD_OA_MIN_INCH: 0.75
   TOL: 0.3
+oa_selection_policy:
+  primary: "min_abs_error"         # always minimize absolute OA error
+  tie_breaker: "prefer_undershoot"  # if |ΔOA A| ≈ |ΔOA B|, prefer undershoot
+  near_equal_band_mm: 0.10         # treat errors within 0.10 mm as equal for tie-breaker
+  standard_gap_sizes_mm: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]  # available spacer sizes
 file_processing:
   deduplication:
     enabled: true

@@ -124,39 +124,95 @@ def get_meta_with_cache(nfrc_id: int, cache: dict) -> dict:
     
     return result
 
-def should_flip_unified(position: str, glass_row, igu_type: str='triple') -> bool:
-    """Use unified flip logic from catalog"""
-    # Handle special case for quad_inner
-    if position == "quad_inner":
-        flip_column = "Flip_QuadInner"
-    else:
-        flip_column = f"Flip_{position.title()}"
-    
-    if flip_column in glass_row.index:
-        return glass_row[flip_column] == True
-    
-    # Fallback to configurable rules
-    meta = get_meta_with_cache(glass_row['NFRC_ID'], {})
-    coating_side = meta.get("coating_side", "none")
-    coating_name = meta.get("coating_name", "")
-    return rules_config.should_flip(position.lower(), coating_side, coating_name, igu_type)
+# Function removed - using direct catalog Flip_* columns
 
-def center_allowed_unified(glass_row, meta: dict, igu_type: str) -> bool:
-    """Check if glass can be used in center position using unified catalog"""
-    # Check position eligibility first
-    if not glass_row.get('Can_Center', False) == True:
-        return False
-    
-    # Then apply traditional thickness/coating rules
-    thickness_mm = meta.get("thickness_mm", 0)
-    coating_side = meta.get("coating_side", "none")
-    return rules_config.center_allowed(thickness_mm, coating_side, igu_type)
+# Function removed - using direct catalog Can_Center column
 
 def calculate_air_gap(oa_mm: float, glass_thicknesses: list, gap_count: int) -> float:
-    """Calculate air gap based on OA and glass thicknesses."""
+    """Calculate ideal air gap based on OA and glass thicknesses."""
     total_glass_thickness = sum(glass_thicknesses)
     total_gap_space = oa_mm - total_glass_thickness
     return total_gap_space / gap_count
+
+def choose_gap_set(oa_target_mm: float, glass_thicknesses: list, gap_count: int) -> dict:
+    """
+    Choose integer gap set that minimizes OA error with undershoot preference.
+    
+    Returns dict with:
+    - gaps_mm: list of integer gap sizes
+    - oa_actual_mm: actual OA achieved
+    - oa_actual_in: actual OA in inches  
+    - oa_delta_mm: signed error (actual - target)
+    - selection_reason: explanation
+    """
+    # Get policy settings
+    standard_gaps = rules_config.rules.get('oa_selection_policy', {}).get('standard_gap_sizes_mm', [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+    near_equal_band = rules_config.rules.get('oa_selection_policy', {}).get('near_equal_band_mm', 0.10)
+    min_gap = rules_config.get_min_airgap()
+    
+    total_glass_thickness = sum(glass_thicknesses)
+    total_gap_space = oa_target_mm - total_glass_thickness
+    ideal_gap = total_gap_space / gap_count
+    
+    # Generate candidate gap combinations
+    candidates = []
+    valid_gaps = [g for g in standard_gaps if g >= min_gap]
+    
+    if gap_count == 2:  # Triple
+        for gap1 in valid_gaps:
+            for gap2 in valid_gaps:
+                gaps = [gap1, gap2]
+                oa_actual = total_glass_thickness + sum(gaps)
+                candidates.append({
+                    'gaps_mm': gaps,
+                    'oa_actual_mm': oa_actual,
+                    'oa_actual_in': round(oa_actual / 25.4, 3),
+                    'signed_error': oa_actual - oa_target_mm
+                })
+    elif gap_count == 3:  # Quad
+        for gap1 in valid_gaps:
+            for gap2 in valid_gaps:
+                for gap3 in valid_gaps:
+                    gaps = [gap1, gap2, gap3]
+                    oa_actual = total_glass_thickness + sum(gaps)
+                    candidates.append({
+                        'gaps_mm': gaps,
+                        'oa_actual_mm': oa_actual,
+                        'oa_actual_in': round(oa_actual / 25.4, 3),
+                        'signed_error': oa_actual - oa_target_mm
+                    })
+    
+    # Score by absolute error
+    for c in candidates:
+        c['oa_error'] = abs(c['signed_error'])
+    
+    # Sort by absolute error
+    candidates.sort(key=lambda c: c['oa_error'])
+    
+    if not candidates:
+        return None
+        
+    best = candidates[0]
+    
+    # Find near-equal alternatives
+    near_equals = [c for c in candidates if c['oa_error'] - best['oa_error'] <= near_equal_band]
+    
+    # Tie-breaker: prefer undershoot (negative signed_error)
+    undershoots = [c for c in near_equals if c['signed_error'] <= 0]
+    
+    if undershoots:
+        # Choose closest to target among undershoots
+        undershoots.sort(key=lambda c: abs(c['signed_error']))
+        selected = undershoots[0]
+        selected['selection_reason'] = "Preferred undershoot among near-equal options"
+    else:
+        # All near-equals overshoot; keep closest to target
+        near_equals.sort(key=lambda c: abs(c['signed_error']))
+        selected = near_equals[0]
+        selected['selection_reason'] = "Minimum absolute error (all options overshoot)"
+    
+    selected['oa_delta_mm'] = selected['signed_error']
+    return selected
 
 def parse_lowe_value(name: str) -> int:
     for tok in name.replace('-', ' ').split():
@@ -221,13 +277,13 @@ def generate_unified_configs():
             for _, o in outer_df.iterrows():
                     
                 m_o = get_meta_with_cache(o.NFRC_ID, cache)
-                if not m_o or m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
+                if not m_o:
                     continue
                     
                 for _, c in center_df.iterrows():
                     pbar.update(1)
                     m_c = get_meta_with_cache(c.NFRC_ID, cache)
-                    if not m_c or not center_allowed_unified(c, m_c, "Triple"):
+                    if not m_c or not c.get('Can_Center', False):
                         continue
                         
                     for _, i in inner_df.iterrows():
@@ -237,29 +293,29 @@ def generate_unified_configs():
                             continue
                             
                         # Apply validation rules
-                        if m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
-                            continue
-                        if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
-                            continue
+                        # Only keep manufacturer matching rule
                         if not (m_o["manufacturer"].lower() == m_i["manufacturer"].lower()):
                             continue
                             
-                        # Calculate air gap
-                        ag = calculate_air_gap(oa_mm, [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 2)
-                        if ag < MIN_AIRGAP:
+                        # Choose optimal gap set for target OA
+                        gap_result = choose_gap_set(oa_mm, [m_o["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 2)
+                        if not gap_result or min(gap_result['gaps_mm']) < MIN_AIRGAP:
                             continue
                             
-                        # Apply unified flipping rules
+                        # Apply catalog-only flipping rules
                         flips = [
-                            should_flip_unified("Outer", o, "triple"),
-                            should_flip_unified("Center", c, "triple"),
-                            should_flip_unified("Inner", i, "triple")
+                            o.get('Flip_Outer', False),
+                            c.get('Flip_Center', False),
+                            i.get('Flip_Inner', False)
                         ]
                         
                         results.append({
                             "IGU Type": "Triple",
-                            "OA (in)": oa_in,
-                            "OA (mm)": oa_mm,
+                            "OA Target (in)": oa_in,
+                            "OA Target (mm)": oa_mm,
+                            "OA Actual (in)": gap_result['oa_actual_in'],
+                            "OA Actual (mm)": gap_result['oa_actual_mm'],
+                            "OA Delta (mm)": gap_result['oa_delta_mm'],
                             "Gas Type": gas["Gas Type"],
                             "Glass 1 NFRC ID": o.NFRC_ID,
                             "Glass 2 NFRC ID": c.NFRC_ID,
@@ -268,7 +324,9 @@ def generate_unified_configs():
                             "Flip Glass 1": flips[0],
                             "Flip Glass 2": flips[1],
                             "Flip Glass 3": flips[2],
-                            "Air Gap (mm)": round(ag, 2)
+                            "Gap 1 (mm)": gap_result['gaps_mm'][0],
+                            "Gap 2 (mm)": gap_result['gaps_mm'][1],
+                            "Selection Reason": gap_result['selection_reason']
                         })
                         
                         triple_count += 1
@@ -292,20 +350,20 @@ def generate_unified_configs():
             for _, o in outer_df.iterrows():
                     
                 m_o = get_meta_with_cache(o.NFRC_ID, cache)
-                if not m_o or m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
+                if not m_o:
                     continue
                     
                 for _, qi in quad_inner_df.iterrows():  # Use proper quad-inner glass
                         
                     m_q = get_meta_with_cache(qi.NFRC_ID, cache)
-                    if not m_q or m_q.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
+                    if not m_q:
                         continue
                         
                     for _, c in center_df.iterrows():  # center
                         pbar.update(1)
                             
                         m_c = get_meta_with_cache(c.NFRC_ID, cache)
-                        if not m_c or not center_allowed_unified(c, m_c, "Quad"):
+                        if not m_c or not c.get('Can_Center', False):
                             continue
                             
                         for _, i in inner_df.iterrows():
@@ -315,30 +373,30 @@ def generate_unified_configs():
                                 continue
                                 
                             # Apply validation rules
-                            if m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
-                                continue
-                            if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
-                                continue
+                            # Only keep manufacturer matching rule
                             if not (m_o["manufacturer"].lower() == m_i["manufacturer"].lower()):
                                 continue
                             
-                            # Calculate air gap for 3 gaps
-                            ag = calculate_air_gap(oa_mm, [m_o["thickness_mm"], m_q["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 3)
-                            if ag < MIN_AIRGAP:
+                            # Choose optimal gap set for target OA 
+                            gap_result = choose_gap_set(oa_mm, [m_o["thickness_mm"], m_q["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 3)
+                            if not gap_result or min(gap_result['gaps_mm']) < MIN_AIRGAP:
                                 continue
                                 
-                            # Apply unified flipping rules for quad
+                            # Apply catalog-only flipping rules for quad
                             flips = [
-                                should_flip_unified("Outer", o, "quad"),
-                                should_flip_unified("quad_inner", qi, "quad"),
-                                should_flip_unified("Center", c, "quad"),
-                                should_flip_unified("Inner", i, "quad"),
+                                o.get('Flip_Outer', False),
+                                qi.get('Flip_QuadInner', False),
+                                c.get('Flip_Center', False),
+                                i.get('Flip_Inner', False),
                             ]
                             
                             results.append({
                                 "IGU Type": "Quad",
-                                "OA (in)": oa_in,
-                                "OA (mm)": oa_mm,
+                                "OA Target (in)": oa_in,
+                                "OA Target (mm)": oa_mm,
+                                "OA Actual (in)": gap_result['oa_actual_in'],
+                                "OA Actual (mm)": gap_result['oa_actual_mm'],
+                                "OA Delta (mm)": gap_result['oa_delta_mm'],
                                 "Gas Type": gas["Gas Type"],
                                 "Glass 1 NFRC ID": o.NFRC_ID,
                                 "Glass 2 NFRC ID": qi.NFRC_ID,
@@ -348,7 +406,10 @@ def generate_unified_configs():
                                 "Flip Glass 2": flips[1],
                                 "Flip Glass 3": flips[2],
                                 "Flip Glass 4": flips[3],
-                                "Air Gap (mm)": round(ag, 2),
+                                "Gap 1 (mm)": gap_result['gaps_mm'][0],
+                                "Gap 2 (mm)": gap_result['gaps_mm'][1],
+                                "Gap 3 (mm)": gap_result['gaps_mm'][2],
+                                "Selection Reason": gap_result['selection_reason']
                             })
                             
                             quad_count += 1
@@ -385,7 +446,7 @@ def generate_unified_configs():
     df_out = pd.DataFrame(results)
     
     # Deduplicate
-    dedupe_columns = ["IGU Type", "OA (in)", "Gas Type", "Glass 1 NFRC ID", "Glass 2 NFRC ID", "Glass 3 NFRC ID", "Glass 4 NFRC ID"]
+    dedupe_columns = ["IGU Type", "OA Target (in)", "Gas Type", "Glass 1 NFRC ID", "Glass 2 NFRC ID", "Glass 3 NFRC ID", "Glass 4 NFRC ID"]
     df_out = df_out.drop_duplicates(subset=dedupe_columns)
     
     df_out.to_csv(OUTPUT_PATH, index=False)
