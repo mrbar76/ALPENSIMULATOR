@@ -1,10 +1,10 @@
 airspace_rules:
   minimum_requirements:
-    quad: 3.0
-    triple: 3.0
+    quad: 6.0
+    triple: 6.0
   outer_airspace:
     calculation_method: oa_mm - sum(glass_thicknesses) / gap_count
-    min_mm: 3.0
+    min_mm: 6.0
 coating_rules:
   center_coating_surfaces:
     description: Surfaces for center glass coatings
@@ -49,11 +49,11 @@ coating_rules:
       glass_3_outside: 5
       outside_air: 1
 constants:
-  CENTER_MAX_THICKNESS: 1.4000000000000004
-  MIN_AIRGAP: 1.0
+  CENTER_MAX_THICKNESS: 1.1
+  MIN_AIRGAP: 6.0
   MIN_EDGE_NOMINAL: 3.0
-  QUAD_OA_MIN_INCH: 1.0
-  TOL: 0.30000000000000004
+  QUAD_OA_MIN_INCH: 0.75
+  TOL: 0.3
 file_processing:
   deduplication:
     enabled: true
