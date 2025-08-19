@@ -53,7 +53,8 @@ if current_step == 1:
     backup_catalog = "unified_glass_catalog.csv"
     
     try:
-        catalog_df = pd.read_csv(catalog_file)
+        with st.spinner("Loading glass catalog..."):
+            catalog_df = pd.read_csv(catalog_file)
         st.success(f"✅ Loaded {len(catalog_df)} glass types from enhanced catalog with coating information")
         
         # Summary metrics
@@ -75,77 +76,77 @@ if current_step == 1:
             st.metric("Coated Glass", coated_count)
         
         # IGU Surface Diagrams
-        st.subheader("🔍 IGU Surface Reference")
-        col1, col2 = st.columns(2)
+        with st.expander("🔍 IGU Surface Reference", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Triple-Pane IGU Surfaces:**")
+                st.text("""
+        Outside ←                    → Inside
         
-        with col1:
-            st.markdown("**Triple-Pane IGU Surfaces:**")
-            st.text("""
-    Outside ←                    → Inside
-    
-    Glass 1    Air Gap    Glass 2    Air Gap    Glass 3
-    ┌─────┐               ┌─────┐               ┌─────┐
-    │  1  │ 2           3 │  4  │ 5           6 │  7  │
-    └─────┘               └─────┘               └─────┘
-    Outer                 Center                Inner
-    
-    • Surface 2: Standard low-E (outer glass back)
-    • Surface 4: Center coatings (center glass back) 
-    • Surface 5: Inner low-E (inner glass front)
-            """)
+        Glass 1    Air Gap    Glass 2    Air Gap    Glass 3
+        ┌─────┐               ┌─────┐               ┌─────┐
+        │  1  │ 2           3 │  4  │ 5           6 │  7  │
+        └─────┘               └─────┘               └─────┘
+        Outer                 Center                Inner
         
-        with col2:
-            st.markdown("**Quad-Pane IGU Surfaces:**")
-            st.text("""
-    Outside ←                                          → Inside
-    
-    Glass 1  Gap  Glass 2  Gap  Glass 3  Gap  Glass 4
-    ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
-    │  1  │ 2 3 │  4  │ 5 6 │  7  │ 8 9 │ 10  │
-    └─────┘     └─────┘     └─────┘     └─────┘
-    Outer      Quad-Inner   Center      Inner
-    
-    • Surface 2: Standard low-E (outer glass back)
-    • Surface 6: Center coatings (center glass back)
-    • Surface 8: Inner low-E (inner glass front)
-            """)
+        • Surface 2: Standard low-E (outer glass back)
+        • Surface 4: Center coatings (center glass back) 
+        • Surface 5: Inner low-E (inner glass front)
+                """)
+            
+            with col2:
+                st.markdown("**Quad-Pane IGU Surfaces:**")
+                st.text("""
+        Outside ←                                          → Inside
         
-        st.info("💡 **Coating Side Logic:** 'Front' = faces inside, 'Back' = faces outside. Flipping changes which surface the coating ends up on.")
+        Glass 1  Gap  Glass 2  Gap  Glass 3  Gap  Glass 4
+        ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
+        │  1  │ 2 3 │  4  │ 5 6 │  7  │ 8 9 │ 10  │
+        └─────┘     └─────┘     └─────┘     └─────┘
+        Outer      Quad-Inner   Center      Inner
+        
+        • Surface 2: Standard low-E (outer glass back)
+        • Surface 6: Center coatings (center glass back)
+        • Surface 8: Inner low-E (inner glass front)
+                """)
+            
+            st.info("💡 **Coating Side Logic:** 'Front' = faces inside, 'Back' = faces outside. Flipping changes which surface the coating ends up on.")
         
         # Coating side distribution
-        st.subheader("🎨 Coating Information Summary")
-        if 'Coating_Side' in catalog_df.columns and len(catalog_df) > 0:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                try:
-                    coating_summary = catalog_df['Coating_Side'].value_counts()
-                    st.write("**Coating Side Distribution:**")
-                    for side, count in coating_summary.items():
-                        st.write(f"• {side}: {count}")
-                except Exception as e:
-                    st.write("**Coating Side Distribution:** Error loading data")
-            with col2:
-                if 'Coating_Name' in catalog_df.columns:
+        with st.expander("🎨 Coating Information Summary", expanded=False):
+            if 'Coating_Side' in catalog_df.columns and len(catalog_df) > 0:
+                col1, col2, col3 = st.columns(3)
+                with col1:
                     try:
-                        coating_names = catalog_df[catalog_df['Coating_Name'].notna() & (catalog_df['Coating_Name'] != 'N/A')]['Coating_Name'].value_counts()
-                        st.write("**Top Coating Types:**")
-                        for name, count in coating_names.head(5).items():
-                            st.write(f"• {name}: {count}")
+                        coating_summary = catalog_df['Coating_Side'].value_counts()
+                        st.write("**Coating Side Distribution:**")
+                        for side, count in coating_summary.items():
+                            st.write(f"• {side}: {count}")
                     except Exception as e:
-                        st.write("**Top Coating Types:** Error loading data")
-            with col3:
-                if 'Emissivity' in catalog_df.columns:
-                    try:
-                        coated_glass = catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])]
-                        if len(coated_glass) > 0:
-                            avg_emissivity = coated_glass['Emissivity'].mean()
-                            st.metric("Avg Coated Emissivity", f"{avg_emissivity:.3f}")
-                        clear_glass = catalog_df[catalog_df['Coating_Side'] == 'neither']
-                        if len(clear_glass) > 0:
-                            clear_emissivity = clear_glass['Emissivity'].iloc[0]
-                            st.metric("Clear Glass Emissivity", f"{clear_emissivity:.3f}")
-                    except Exception as e:
-                        st.write("**Emissivity Data:** Error loading data")
+                        st.write("**Coating Side Distribution:** Error loading data")
+                with col2:
+                    if 'Coating_Name' in catalog_df.columns:
+                        try:
+                            coating_names = catalog_df[catalog_df['Coating_Name'].notna() & (catalog_df['Coating_Name'] != 'N/A')]['Coating_Name'].value_counts()
+                            st.write("**Top Coating Types:**")
+                            for name, count in coating_names.head(5).items():
+                                st.write(f"• {name}: {count}")
+                        except Exception as e:
+                            st.write("**Top Coating Types:** Error loading data")
+                with col3:
+                    if 'Emissivity' in catalog_df.columns:
+                        try:
+                            coated_glass = catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])]
+                            if len(coated_glass) > 0:
+                                avg_emissivity = coated_glass['Emissivity'].mean()
+                                st.metric("Avg Coated Emissivity", f"{avg_emissivity:.3f}")
+                            clear_glass = catalog_df[catalog_df['Coating_Side'] == 'neither']
+                            if len(clear_glass) > 0:
+                                clear_emissivity = clear_glass['Emissivity'].iloc[0]
+                                st.metric("Clear Glass Emissivity", f"{clear_emissivity:.3f}")
+                        except Exception as e:
+                            st.write("**Emissivity Data:** Error loading data")
         
         st.markdown("""
         **🔄 Flip Logic Guide:**
