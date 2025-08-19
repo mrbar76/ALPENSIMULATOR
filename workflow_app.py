@@ -228,28 +228,25 @@ elif current_step == 2:
     # Display the built-in rules from the original generator
     st.info("""
     **🔧 Manufacturing Constraints:**
-    • Edge glass minimum thickness: 3.0mm
-    • Center glass maximum thickness: 1.1mm (for tight fit)
-    • Thickness tolerance between outer/inner: ±0.3mm
-    • Minimum air gap: 3.0mm
+    • **CATALOG-BASED VALIDATION:** Position capabilities determined by catalog checkboxes
+    • **Manufacturer matching:** Outer and inner glass must be from same manufacturer
+    • **Minimum air gap:** 6.0mm (constrained by minimum spacer size)
     
-    **🏭 Manufacturer Compatibility:**
-    • Outer and inner glass must be from same manufacturer OR one can be "Generic"
-    • Ensures structural and warranty compatibility
+    **⚗️ Integer Gap Selection Logic:**
+    • **Target OA:** Uses standard OA sizes (0.88", 1.0", 1.25")
+    • **Gap optimization:** Selects integer spacer combinations (6-20mm) that minimize OA error
+    • **Undershoot preference:** When errors are similar (±0.1mm), prefers actual OA below target
+    • **Practical spacing:** Results in manufacturable integer gaps instead of decimal values
     
-    **⚗️ Physics & Performance:**
-    • Air gap = (OA - total glass thickness) ÷ number of gaps
-    • Air gap constrained by available spacer sizes (6-20mm)
-    • Coating placement validated (inner ≤ outer emissivity)
-    • Position constraints enforced (quad-inner thickness limits)
-    • Low-E coating ordering rules applied
+    **📏 OA Selection Examples:**
+    • Target 24.0mm → Selects gaps [6,7] → Actual 23.5mm (-0.5mm undershoot) ✅
+    • Target 28.0mm → Selects gaps [7,7,6] → Actual 28.2mm (+0.2mm minimum error) ✅
     
-    **📏 Standard Specifications:**
-    • OA sizes: 0.88", 1.0", 1.25"
-    • Gas types: 90K, 95A argon fills
-    • Spacer thickness: 6mm minimum, 20mm maximum (structural frame)
-    • Air gap: Calculated physics-based space between glass panes
-    • Surface coatings: Proper placement validation
+    **🎯 Simplified Rule Set:**
+    • **Catalog position rules:** Can_Outer, Can_Center, Can_Inner, Can_QuadInner checkboxes
+    • **Catalog flip logic:** Flip_Outer, Flip_Center, Flip_Inner, Flip_QuadInner settings
+    • **Manufacturer matching:** Only independent validation rule remaining
+    • **No thickness/tolerance validation:** Deferred to catalog capabilities
     """)
     
     # Show configuration constants
@@ -257,14 +254,14 @@ elif current_step == 2:
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Max Configs per Type", "2,000", help="Limits generation for performance")
-        st.metric("Min Edge Thickness", "3.0mm", help="Manufacturing constraint")
+        st.metric("Gap Selection", "Integer", help="Uses standard spacer sizes for manufacturing")
+        st.metric("OA Error Tolerance", "±0.1mm", help="Near-equal threshold for undershoot preference")
     with col2:
-        st.metric("Max Center Thickness", "1.1mm", help="Tight fit requirement") 
-        st.metric("Thickness Tolerance", "±0.3mm", help="Outer/inner matching")
+        st.metric("Spacer Range", "6-20mm", help="Available integer spacer sizes")
+        st.metric("Min Air Gap", "6.0mm", help="Minimum spacer constraint")
     with col3:
-        st.metric("Spacer Range", "6-20mm", help="Available spacer sizes that create air gaps")
-        st.metric("Min Air Gap", "6.0mm", help="Determined by minimum spacer size")
+        st.metric("Rule Validation", "Catalog-Based", help="Position capabilities from catalog checkboxes")
+        st.metric("Manufacturer Rule", "Active", help="Only independent validation remaining")
     
     # Configuration file status
     st.subheader("🗂️ Configuration Files")
@@ -364,10 +361,11 @@ elif current_step == 3:
             st.subheader("ℹ️ Generator Info")
             st.info("**Features:**")
             st.write("• Real IGSDB thickness data")
-            st.write("• Physics-based air gap calculation") 
-            st.write("• Manufacturing constraints")
-            st.write("• Position capability filtering")
-            st.write("• Rule validation")
+            st.write("• Integer gap selection algorithm") 
+            st.write("• Undershoot preference for OA targeting")
+            st.write("• Catalog-based position filtering")
+            st.write("• Simplified manufacturer-only validation")
+            st.write("• Actual vs target OA reporting")
     
     else:
         st.error(f"❌ Generator file not found: {generator_file}")
