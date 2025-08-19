@@ -19,7 +19,7 @@ OUTPUT_PATH            = "igu_simulation_input_table.csv"
 
 TOL               = 0.3   # mm tolerance for measured thickness
 MIN_EDGE_NOMINAL  = 3.0   # mm for outer/inner nominal
-MIN_AIRGAP        = 3.0   # mm minimum air gap
+MIN_AIRGAP        = 6.0   # mm minimum air gap (constrained by min spacer size)
 QUAD_OA_MIN_INCH  = 0.75  # in, skip quads at or below this OA
 
 # === HELPERS ===

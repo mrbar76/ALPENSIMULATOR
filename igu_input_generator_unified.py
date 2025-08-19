@@ -28,12 +28,11 @@ GAS_TYPES_PATH = "input_gas_types.csv"
 OUTPUT_PATH = "igu_simulation_input_table.csv"
 CACHE_FILE = "igsdb_layer_cache.pkl"
 
-# Fast generation settings
-MAX_CONFIGS_PER_TYPE = 2000
+# Generation settings  
 BATCH_SIZE = 500
 
 print("🚀 Unified IGU Input Generator - Multiselect Position Version")
-print(f"⚡ Limited to {MAX_CONFIGS_PER_TYPE:,} configs per type for speed")
+print("⚡ Generating all valid configurations like original generator")
 
 # Initialize configurable rules system
 print("🔧 Loading configurable rules...")
@@ -210,38 +209,28 @@ def generate_unified_configs():
             pickle.dump(cache, f)
         print("💾 Cache updated")
     
-    # === TRIPLES (Limited) ===
-    print(f"\\n🔷 Generating Triples (max {MAX_CONFIGS_PER_TYPE:,})...")
+    # === TRIPLES ===
+    triple_iters = len(oa_df)*len(gas_df)*len(outer_df)*len(center_df)*len(inner_df)
+    print(f"\\n🔷 Generating Triples ({triple_iters:,} combinations)...")
     
     triple_count = 0
+    pbar = tqdm(total=triple_iters, unit="cfg")
     for _, oa in oa_df.iterrows():
-        if triple_count >= MAX_CONFIGS_PER_TYPE:
-            break
-            
         oa_mm, oa_in = oa["OA (mm)"], oa["OA (in)"]
         for _, gas in gas_df.iterrows():
-            if triple_count >= MAX_CONFIGS_PER_TYPE:
-                break
-                
             for _, o in outer_df.iterrows():
-                if triple_count >= MAX_CONFIGS_PER_TYPE:
-                    break
                     
                 m_o = get_meta_with_cache(o.NFRC_ID, cache)
                 if not m_o or m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
                     continue
                     
                 for _, c in center_df.iterrows():
-                    if triple_count >= MAX_CONFIGS_PER_TYPE:
-                        break
-                        
+                    pbar.update(1)
                     m_c = get_meta_with_cache(c.NFRC_ID, cache)
                     if not m_c or not center_allowed_unified(c, m_c, "Triple"):
                         continue
                         
                     for _, i in inner_df.iterrows():
-                        if triple_count >= MAX_CONFIGS_PER_TYPE:
-                            break
                             
                         m_i = get_meta_with_cache(i.NFRC_ID, cache)
                         if not m_i:
@@ -283,87 +272,59 @@ def generate_unified_configs():
                         })
                         
                         triple_count += 1
-                        
-                        # Progress update
-                        if triple_count % 100 == 0:
-                            print(f"   Generated {triple_count:,} triples...")
     
+    pbar.close()
     print(f"✅ Generated {triple_count:,} triple configurations")
     
-    # === QUADS (Limited) ===
+    # === QUADS ===
     quad_candidates = oa_df[oa_df["OA (in)"] > QUAD_OA_MIN_INCH]
-    print(f"\\n🔶 Generating Quads (max {MAX_CONFIGS_PER_TYPE:,})...")
+    quad_iters = len(quad_candidates)*len(gas_df)*len(outer_df)*len(quad_inner_df)*len(center_df)*len(inner_df)
+    print(f"\\n🔶 Generating Quads ({quad_iters:,} combinations)...")
     print(f"   OA filter: {len(oa_df)} → {len(quad_candidates)} (min OA: {QUAD_OA_MIN_INCH}\\\")") 
     print(f"   Available quad-inner glass: {len(quad_inner_df)}")
     
     quad_count = 0
-    total_attempts = 0
+    pbar = tqdm(total=quad_iters, unit="cfg")
     for _, oa in quad_candidates.iterrows():
-        if quad_count >= MAX_CONFIGS_PER_TYPE:
-            break
             
         oa_mm, oa_in = oa["OA (mm)"], oa["OA (in)"]
         for _, gas in gas_df.iterrows():
-            if quad_count >= MAX_CONFIGS_PER_TYPE:
-                break
-                
             for _, o in outer_df.iterrows():
-                if quad_count >= MAX_CONFIGS_PER_TYPE:
-                    break
                     
                 m_o = get_meta_with_cache(o.NFRC_ID, cache)
                 if not m_o or m_o.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
                     continue
                     
                 for _, qi in quad_inner_df.iterrows():  # Use proper quad-inner glass
-                    if quad_count >= MAX_CONFIGS_PER_TYPE:
-                        break
                         
                     m_q = get_meta_with_cache(qi.NFRC_ID, cache)
                     if not m_q or m_q.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
                         continue
                         
                     for _, c in center_df.iterrows():  # center
-                        if quad_count >= MAX_CONFIGS_PER_TYPE:
-                            break
+                        pbar.update(1)
                             
                         m_c = get_meta_with_cache(c.NFRC_ID, cache)
                         if not m_c or not center_allowed_unified(c, m_c, "Quad"):
                             continue
                             
                         for _, i in inner_df.iterrows():
-                            if quad_count >= MAX_CONFIGS_PER_TYPE:
-                                break
-                                
-                            total_attempts += 1
-                            if total_attempts <= 5:  # Debug first few attempts
-                                print(f"   Debug attempt {total_attempts}: trying OA={oa_mm}mm, outer={o.NFRC_ID}, qi={qi.NFRC_ID}, center={c.NFRC_ID}, inner={i.NFRC_ID}")
                                 
                             m_i = get_meta_with_cache(i.NFRC_ID, cache)
                             if not m_i:
-                                if total_attempts <= 5:
-                                    print(f"   Debug: No metadata for inner {i.NFRC_ID}")
                                 continue
                                 
                             # Apply validation rules
                             if m_i.get("thickness_mm", 0) < MIN_EDGE_NOMINAL:
-                                if total_attempts <= 5:
-                                    print(f"   Debug: Inner too thin {m_i.get('thickness_mm', 0)}mm < {MIN_EDGE_NOMINAL}mm")
                                 continue
                             if abs(m_o["thickness_mm"] - m_i["thickness_mm"]) > TOL:
-                                if total_attempts <= 5:
-                                    print(f"   Debug: Thickness mismatch outer={m_o['thickness_mm']}mm vs inner={m_i['thickness_mm']}mm, diff={abs(m_o['thickness_mm'] - m_i['thickness_mm']):.2f}mm > {TOL}mm")
                                 continue
                             if not (m_o["manufacturer"].lower() == m_i["manufacturer"].lower()):
-                                if total_attempts <= 5:
-                                    print(f"   Debug: Manufacturer mismatch outer={m_o['manufacturer']} vs inner={m_i['manufacturer']}")
                                 continue
                             
                             # Calculate air gap for 3 gaps
                             ag = calculate_air_gap(oa_mm, [m_o["thickness_mm"], m_q["thickness_mm"], m_c["thickness_mm"], m_i["thickness_mm"]], 3)
                             if ag < MIN_AIRGAP:
-                                if total_attempts <= 5:
-                                    print(f"   Debug: Gap too small {ag:.2f}mm < {MIN_AIRGAP}mm for OA={oa_mm}mm, thicknesses=[{m_o['thickness_mm']},{m_q['thickness_mm']},{m_c['thickness_mm']},{m_i['thickness_mm']}]")
                                 continue
                                 
                             # Apply unified flipping rules for quad
@@ -392,12 +353,8 @@ def generate_unified_configs():
                             
                             quad_count += 1
                             
-                            # Progress update and sample output
-                            if quad_count % 100 == 0:
-                                print(f"   Generated {quad_count:,} quads...")
-                            elif quad_count <= 3:
-                                print(f"   Sample quad {quad_count}: OA={oa_mm}mm, glasses=[{m_o['thickness_mm']},{m_q['thickness_mm']},{m_c['thickness_mm']},{m_i['thickness_mm']}]mm, gap={ag:.2f}mm")
     
+    pbar.close()
     print(f"✅ Generated {quad_count:,} quad configurations")
     
     if quad_count == 0:

@@ -48,16 +48,15 @@ if current_step == 1:
     st.header("1️⃣ Glass Catalog Management")
     st.subheader("Manage your glass catalog and position capabilities")
     
-    # Load existing catalog (enhanced version with coating info)
-    catalog_file = "unified_glass_catalog_enhanced.csv"
-    backup_catalog = "unified_glass_catalog.csv"
+    # Load existing catalog
+    catalog_file = "unified_glass_catalog.csv"
     
     try:
         catalog_df = pd.read_csv(catalog_file)
-        st.success(f"✅ Loaded {len(catalog_df)} glass types from enhanced catalog with coating information")
+        st.success(f"✅ Loaded {len(catalog_df)} glass types from catalog")
         
         # Summary metrics
-        col1, col2, col3, col4, col5 = st.columns(5)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             outer_count = len(catalog_df[catalog_df['Can_Outer'] == True])
             st.metric("Outer Capable", outer_count)
@@ -70,79 +69,6 @@ if current_step == 1:
         with col4:
             quad_inner_count = len(catalog_df[catalog_df['Can_QuadInner'] == True])
             st.metric("Quad Inner Capable", quad_inner_count)
-        with col5:
-            coated_count = len(catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])])
-            st.metric("Coated Glass", coated_count)
-        
-        # IGU Surface Diagrams
-        st.subheader("🔍 IGU Surface Reference")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Triple-Pane IGU Surfaces:**")
-            st.text("""
-    Outside ←                    → Inside
-    
-    Glass 1    Air Gap    Glass 2    Air Gap    Glass 3
-    ┌─────┐               ┌─────┐               ┌─────┐
-    │  1  │ 2           3 │  4  │ 5           6 │  7  │
-    └─────┘               └─────┘               └─────┘
-    Outer                 Center                Inner
-    
-    • Surface 2: Standard low-E (outer glass back)
-    • Surface 4: Center coatings (center glass back) 
-    • Surface 5: Inner low-E (inner glass front)
-            """)
-        
-        with col2:
-            st.markdown("**Quad-Pane IGU Surfaces:**")
-            st.text("""
-    Outside ←                                          → Inside
-    
-    Glass 1  Gap  Glass 2  Gap  Glass 3  Gap  Glass 4
-    ┌─────┐     ┌─────┐     ┌─────┐     ┌─────┐
-    │  1  │ 2 3 │  4  │ 5 6 │  7  │ 8 9 │ 10  │
-    └─────┘     └─────┘     └─────┘     └─────┘
-    Outer      Quad-Inner   Center      Inner
-    
-    • Surface 2: Standard low-E (outer glass back)
-    • Surface 6: Center coatings (center glass back)
-    • Surface 8: Inner low-E (inner glass front)
-            """)
-        
-        st.info("💡 **Coating Side Logic:** 'Front' = faces inside, 'Back' = faces outside. Flipping changes which surface the coating ends up on.")
-        
-        # Coating side distribution
-        st.subheader("🎨 Coating Information Summary")
-        if 'Coating_Side' in catalog_df.columns:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                coating_summary = catalog_df['Coating_Side'].value_counts()
-                st.write("**Coating Side Distribution:**")
-                for side, count in coating_summary.items():
-                    st.write(f"• {side}: {count}")
-            with col2:
-                if 'Coating_Name' in catalog_df.columns:
-                    coating_names = catalog_df[catalog_df['Coating_Name'] != 'N/A']['Coating_Name'].value_counts()
-                    st.write("**Top Coating Types:**")
-                    for name, count in coating_names.head(5).items():
-                        st.write(f"• {name}: {count}")
-            with col3:
-                if 'Emissivity' in catalog_df.columns:
-                    coated_glass = catalog_df[catalog_df['Coating_Side'].isin(['front', 'back'])]
-                    if len(coated_glass) > 0:
-                        avg_emissivity = coated_glass['Emissivity'].mean()
-                        st.metric("Avg Coated Emissivity", f"{avg_emissivity:.3f}")
-                        clear_emissivity = catalog_df[catalog_df['Coating_Side'] == 'neither']['Emissivity'].iloc[0]
-                        st.metric("Clear Glass Emissivity", f"{clear_emissivity:.3f}")
-        
-        st.markdown("""
-        **🔄 Flip Logic Guide:**
-        - **Back-coated glass** in outer position: Usually flipped to put coating on surface 2
-        - **Front-coated glass** in inner position: Usually flipped to put coating on surface 5/7  
-        - **Center glass**: Depends on coating type and IGU configuration
-        - **Clear glass**: No flipping needed (no coating to position)
-        """)
         
         # Catalog editor
         st.subheader("📝 Catalog Editor")
@@ -160,16 +86,7 @@ if current_step == 1:
                 "Flip_Outer": st.column_config.CheckboxColumn("Flip when Outer"),
                 "Flip_QuadInner": st.column_config.CheckboxColumn("Flip when Quad Inner"),
                 "Flip_Center": st.column_config.CheckboxColumn("Flip when Center"), 
-                "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner"),
-                "Coating_Side": st.column_config.SelectColumn("Coating Side", 
-                    options=["neither", "front", "back", "unknown"], 
-                    help="Which side the coating is on"),
-                "Coating_Name": st.column_config.TextColumn("Coating Name", 
-                    help="Name of the coating from IGSDB"),
-                "Emissivity": st.column_config.NumberColumn("Emissivity", 
-                    format="%.3f", help="Emissivity value from IGSDB"),
-                "IGSDB_Status": st.column_config.TextColumn("IGSDB Status", 
-                    help="Status of IGSDB data retrieval")
+                "Flip_Inner": st.column_config.CheckboxColumn("Flip when Inner")
             }
         )
         
@@ -189,91 +106,59 @@ if current_step == 1:
                 st.rerun()
                 
     except FileNotFoundError:
-        # Try backup catalog
-        try:
-            catalog_df = pd.read_csv(backup_catalog)
-            st.warning(f"⚠️ Enhanced catalog not found, using backup: {backup_catalog}")
-            st.info("Run 'enhance_catalog_with_coating_info.py' to add coating information")
-        except FileNotFoundError:
-            st.error(f"❌ No catalog files found!")
-            st.info("Please ensure unified_glass_catalog.csv exists in the project directory")
+        st.error(f"❌ Catalog file '{catalog_file}' not found!")
+        st.info("Please ensure unified_glass_catalog.csv exists in the project directory")
 
 # === STEP 2: GENERATION RULES ===
 elif current_step == 2:
     st.header("2️⃣ Generation Rules & Configuration") 
-    st.subheader("Built-in manufacturing and physics rules")
+    st.subheader("Configure IGU generation rules and constraints")
     
-    st.success("✅ **Using proven rules from the original generator**")
-    
-    # Display the built-in rules from the original generator
-    st.info("""
-    **🔧 Manufacturing Constraints:**
-    • Edge glass minimum thickness: 3.0mm
-    • Center glass maximum thickness: 1.1mm (for tight fit)
-    • Thickness tolerance between outer/inner: ±0.3mm
-    • Minimum air gap: 3.0mm
-    
-    **🏭 Manufacturer Compatibility:**
-    • Outer and inner glass must be from same manufacturer OR one can be "Generic"
-    • Ensures structural and warranty compatibility
-    
-    **⚗️ Physics & Performance:**
-    • Air gap = (OA - total glass thickness) ÷ number of gaps
-    • Air gap constrained by available spacer sizes (6-20mm)
-    • Coating placement validated (inner ≤ outer emissivity)
-    • Position constraints enforced (quad-inner thickness limits)
-    • Low-E coating ordering rules applied
-    
-    **📏 Standard Specifications:**
-    • OA sizes: 0.88", 1.0", 1.25"
-    • Gas types: 90K, 95A argon fills
-    • Spacer thickness: 6mm minimum, 20mm maximum (structural frame)
-    • Air gap: Calculated physics-based space between glass panes
-    • Surface coatings: Proper placement validation
-    """)
-    
-    # Show configuration constants
-    st.subheader("📊 Current Configuration Constants")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Max Configs per Type", "2,000", help="Limits generation for performance")
-        st.metric("Min Edge Thickness", "3.0mm", help="Manufacturing constraint")
-    with col2:
-        st.metric("Max Center Thickness", "1.1mm", help="Tight fit requirement") 
-        st.metric("Thickness Tolerance", "±0.3mm", help="Outer/inner matching")
-    with col3:
-        st.metric("Spacer Range", "6-20mm", help="Available spacer sizes that create air gaps")
-        st.metric("Min Air Gap", "6.0mm", help="Determined by minimum spacer size")
-    
-    # Configuration file status
-    st.subheader("🗂️ Configuration Files")
-    
-    required_files = [
-        ("unified_glass_catalog.csv", "Glass catalog with position capabilities"),
-        ("input_oa_sizes.csv", "Standard OA sizes"),
-        ("input_gas_types.csv", "Available gas fill types")
-    ]
-    
-    all_present = True
-    for filename, description in required_files:
-        if os.path.exists(filename):
-            st.success(f"✅ {filename} - {description}")
-        else:
-            st.error(f"❌ {filename} - {description}")
-            all_present = False
-    
-    if not all_present:
-        st.warning("⚠️ Some configuration files are missing. Generation may use defaults.")
-    
-    # Navigation
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("⬅️ Back to Step 1"):
-            st.session_state.workflow_step = 1
-            st.rerun()
-    with col2:
-        if st.button("➡️ Proceed to Step 3", type="primary"):
+    # Load rule builder
+    try:
+        from rule_builder import RuleBuilder
+        
+        st.info("**Rule Builder Integration** - Create custom rules for IGU generation")
+        
+        # Initialize rule builder
+        builder = RuleBuilder()
+        
+        # Create rule interface
+        tab1, tab2 = st.tabs(["🔧 Build Rules", "📋 View Current Rules"])
+        
+        with tab1:
+            st.subheader("Rule Builder")
+            builder.create_rule_builder_interface()
+            
+        with tab2:
+            st.subheader("Current Generation Rules")
+            
+            # Load and display current rules
+            rules_file = "igu_generation_rules.yaml"
+            if os.path.exists(rules_file):
+                import yaml
+                with open(rules_file, 'r') as f:
+                    rules = yaml.safe_load(f)
+                st.code(yaml.dump(rules, default_flow_style=False), language='yaml')
+            else:
+                st.info("No rules file found. Rules will use defaults.")
+        
+        # Navigation
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("⬅️ Back to Step 1"):
+                st.session_state.workflow_step = 1
+                st.rerun()
+        with col2:
+            if st.button("➡️ Proceed to Step 3", type="primary"):
+                st.session_state.workflow_step = 3
+                st.rerun()
+                
+    except ImportError:
+        st.error("❌ Rule builder not available")
+        st.info("Using default generation rules")
+        
+        if st.button("➡️ Proceed to Step 3 (Skip Rules)", type="primary"):
             st.session_state.workflow_step = 3
             st.rerun()
 
@@ -294,7 +179,14 @@ elif current_step == 3:
         with col1:
             st.subheader("🚀 Run Configuration Generator")
             
-            st.info("**Generator will create ALL valid configurations like the original configurator**")
+            max_configs = st.number_input(
+                "Maximum configurations per type", 
+                min_value=100, 
+                max_value=5000, 
+                value=2000,
+                step=100,
+                help="Limit configurations for faster processing"
+            )
             
             if st.button("🚀 Generate Configurations", type="primary"):
                 with st.spinner("Running unified configuration generator..."):

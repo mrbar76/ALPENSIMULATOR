@@ -47,7 +47,7 @@ class AlpenRulesConfig:
             'constants': {
                 'TOL': 0.3,
                 'MIN_EDGE_NOMINAL': 3.0,
-                'MIN_AIRGAP': 3.0,
+                'MIN_AIRGAP': 6.0,
                 'QUAD_OA_MIN_INCH': 0.75,
                 'CENTER_MAX_THICKNESS': 1.1
             }
